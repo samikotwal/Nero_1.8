@@ -1,0 +1,5 @@
+{
+  "name": "SERS - Smart Emergency Response System",
+  "description": "A modern, fully interactive and automated emergency response system with real-time tracking, resource management, and automated dispatch logic.",
+  "requestFramePermissions": ["geolocation"]
+}
