@@ -40,6 +40,31 @@ body::before {
   opacity: 0.1;
 }
 
+@keyframes dash {
+  from {
+    stroke-dashoffset: 500;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.animate-dash {
+  animation: dash 5s linear infinite;
+}
+
+.road-glow {
+  filter: drop-shadow(0 0 8px rgba(34, 211, 238, 0.6));
+}
+
+.animate-dash-fast {
+  animation: dash 2s linear infinite;
+}
+
+.animate-dash-slow {
+  animation: dash 10s linear infinite;
+}
+
 .custom-scrollbar::-webkit-scrollbar {
   width: 4px;
 }

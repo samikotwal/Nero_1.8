@@ -78,7 +78,7 @@ export const EmergencyRequests = () => {
                   "w-14 h-14 rounded-2xl flex items-center justify-center text-2xl",
                   em.priority === 'HIGH' ? 'bg-rose-500/10 text-rose-500' : 'bg-amber-500/10 text-amber-500'
                 )}>
-                  {em.description.includes('Cardiac') ? '🫀' : em.description.includes('Accident') ? '🚗' : em.description.includes('Fire') ? '🔥' : '🚑'}
+                  {em.description.includes('Cardiac') ? '🫀' : em.description.includes('Accident') ? '🚗' : em.description.includes('Fire') ? '🔥' : '🚨'}
                 </div>
                 <div>
                   <div className="flex items-center gap-3 mb-1">

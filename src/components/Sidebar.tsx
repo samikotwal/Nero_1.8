@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { 
   LayoutDashboard, 
   AlertTriangle, 
-  Truck, 
   Hospital, 
   Map as MapIcon, 
   BarChart3, 
@@ -23,7 +22,6 @@ import { motion, AnimatePresence } from 'motion/react';
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
   { icon: AlertTriangle, label: 'Emergency Requests', path: '/emergency' },
-  { icon: Truck, label: 'Resource Management', path: '/resources' },
   { icon: Hospital, label: 'Hospital Management', path: '/hospitals' },
   { icon: MapIcon, label: 'Live Map', path: '/map' },
   { icon: BarChart3, label: 'Reports & Analytics', path: '/reports' },

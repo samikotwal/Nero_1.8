@@ -3,13 +3,13 @@ import { motion } from 'motion/react';
 import { 
   Hospital, 
   Bed, 
-  Truck, 
   Activity,
   AlertTriangle,
   Timer,
   MapPin,
   Wind,
-  Brain
+  Brain,
+  ShieldCheck
 } from 'lucide-react';
 import { useSimulation } from '../context/SimulationContext';
 import { cn } from '../lib/utils';
@@ -89,12 +89,20 @@ export const Dashboard = () => {
     resolved: Math.floor(Math.random() * 12 + 3),
   })), []);
 
-  const resourceData = useMemo(() => [
-    { name: "Ambulances", available: 12, total: 15 },
-    { name: "ICU Beds", available: 45, total: 120 },
-    { name: "Ventilators", available: 28, total: 60 },
-    { name: "Blood Units", available: 150, total: 200 },
-  ], []);
+  const resourceData = useMemo(() => {
+    const totalBedsAvailable = hospitals.reduce((acc, h) => acc + h.beds.available, 0);
+    const totalBedsCapacity = hospitals.reduce((acc, h) => acc + h.beds.total, 0);
+    const totalIcuAvailable = hospitals.reduce((acc, h) => acc + h.icuBeds, 0);
+    const totalIcuCapacity = hospitals.reduce((acc, h) => acc + h.totalIcuBeds, 0);
+    const totalAmbAvailable = hospitals.reduce((acc, h) => acc + h.ambulances, 0);
+    const totalAmbCapacity = hospitals.reduce((acc, h) => acc + h.totalAmbulances, 0);
+
+    return [
+      { name: "ICU Beds", available: totalIcuAvailable, total: totalIcuCapacity },
+      { name: "General Beds", available: totalBedsAvailable, total: totalBedsCapacity },
+      { name: "Ambulances", available: totalAmbAvailable, total: totalAmbCapacity },
+    ];
+  }, [hospitals]);
 
   const typeData = useMemo(() => [
     { name: "Cardiac", value: 25, color: "#ef4444" },
@@ -138,10 +146,10 @@ export const Dashboard = () => {
           color="emerald"
         />
         <StatCard 
-          title="Ambulances Ready" 
-          value="9" 
-          subValue="of 15 fleet"
-          icon={<Truck className="w-6 h-6 text-cyan-400" />} 
+          title="Emergency Readiness" 
+          value="95%" 
+          subValue="Optimal Coverage"
+          icon={<ShieldCheck className="w-6 h-6 text-cyan-400" />} 
           iconBg="bg-cyan-500/10"
           color="cyan"
         />

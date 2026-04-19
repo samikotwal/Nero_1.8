@@ -3,6 +3,7 @@ import Lenis from 'lenis';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { SimulationProvider } from './context/SimulationContext';
+import { Activity } from 'lucide-react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 
@@ -25,7 +26,6 @@ const PageWrapper = ({ children }: { children: React.ReactNode }) => {
 };
 import { Dashboard } from './pages/Dashboard';
 import { EmergencyRequests } from './pages/EmergencyRequests';
-import { ResourceManagement } from './pages/ResourceManagement';
 import { HospitalManagement } from './pages/HospitalManagement';
 import { HospitalDetail } from './pages/HospitalDetail';
 import { LiveMap } from './pages/LiveMap';
@@ -35,6 +35,13 @@ import { Settings } from './pages/Settings';
 
 export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(window.innerWidth > 1024);
+  const [isAppReady, setIsAppReady] = React.useState(false);
+
+  useEffect(() => {
+    // Immediate mission startup
+    const timer = setTimeout(() => setIsAppReady(true), 50);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const handleResize = () => {
@@ -61,6 +68,51 @@ export default function App() {
   return (
     <SimulationProvider>
       <Router>
+        <AnimatePresence>
+          {!isAppReady && (
+            <motion.div
+              key="splash"
+              initial={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[200] bg-[#050a0a] flex flex-col items-center justify-center gap-6"
+            >
+              <motion.div
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.5, ease: "easeOut" }}
+                className="w-24 h-24 bg-cyan-500/10 rounded-3xl flex items-center justify-center border border-cyan-500/20 shadow-[0_0_40px_rgba(6,182,212,0.3)] relative"
+              >
+                <div className="absolute inset-0 bg-cyan-500/20 blur-3xl rounded-full" />
+                <Activity className="text-cyan-400 w-12 h-12 relative z-10" />
+              </motion.div>
+              <div className="text-center">
+                <motion.h1 
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.2 }}
+                  className="font-black text-4xl tracking-tighter text-white"
+                >
+                  SERS
+                </motion.h1>
+                <motion.p 
+                   initial={{ y: 20, opacity: 0 }}
+                   animate={{ y: 0, opacity: 1 }}
+                   transition={{ delay: 0.3 }}
+                   className="text-[10px] text-cyan-400/60 uppercase tracking-[0.3em] font-black"
+                >
+                  Emergency Response
+                </motion.p>
+              </div>
+              <motion.div 
+                initial={{ width: 0 }}
+                animate={{ width: 200 }}
+                transition={{ duration: 1, ease: "easeInOut" }}
+                className="h-0.5 bg-gradient-to-r from-transparent via-cyan-500 to-transparent mt-4" 
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <div className="flex h-screen bg-[#050a0a] text-white overflow-hidden font-sans relative">
           <AnimatePresence>
             {isSidebarOpen && window.innerWidth <= 1024 && (
@@ -80,7 +132,6 @@ export default function App() {
               <PageWrapper>
                 <Routes>
                   <Route path="/" element={<Dashboard />} />
-                  <Route path="/resources" element={<ResourceManagement />} />
                   <Route path="/hospitals" element={<HospitalManagement />} />
                   <Route path="/hospitals/:id" element={<HospitalDetail />} />
                   <Route path="/map" element={<LiveMap />} />

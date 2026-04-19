@@ -3,9 +3,10 @@ import { Bell, Search, Zap, Play, Pause, Menu, AlertCircle, Radio } from 'lucide
 import { useSimulation } from '../context/SimulationContext';
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 export const Header = ({ toggleSidebar }: { toggleSidebar: () => void }) => {
+    const navigate = useNavigate();
     const { 
       isSimulationActive, 
       toggleSimulation, 
@@ -14,10 +15,12 @@ export const Header = ({ toggleSidebar }: { toggleSidebar: () => void }) => {
       filterType, 
       setFilterType,
       statusFilter,
-      setStatusFilter
+      setStatusFilter,
+      notifications,
+      markNotificationsAsRead
     } = useSimulation();
     const location = useLocation();
-    const isMapPage = location.pathname === '/map';
+    const isSearchablePage = ['/map', '/hospitals'].includes(location.pathname);
   
     return (
       <header className="h-16 border-b border-white/5 bg-[#050a0a]/80 backdrop-blur-md flex items-center justify-between px-4 lg:px-8 z-40">
@@ -39,7 +42,7 @@ export const Header = ({ toggleSidebar }: { toggleSidebar: () => void }) => {
             </span>
           </div>
   
-          {isMapPage && (
+          {isSearchablePage && (
             <div className="hidden xl:flex items-center gap-4 ml-4">
               <div className="relative group">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20 group-focus-within:text-cyan-400 transition-colors" />
@@ -97,9 +100,19 @@ export const Header = ({ toggleSidebar }: { toggleSidebar: () => void }) => {
           </motion.button>
 
         <div className="flex items-center gap-2 lg:gap-4 border-l border-white/10 ml-2 pl-4 lg:pl-6">
-          <button className="relative p-2 rounded-full hover:bg-white/5 transition-colors">
+          <button 
+            onClick={() => {
+              markNotificationsAsRead();
+              navigate('/notifications');
+            }}
+            className="relative p-2 rounded-full hover:bg-white/5 transition-colors"
+          >
             <Bell className="w-5 h-5 text-white/60" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-500 rounded-full border-2 border-[#050a0a]" />
+            {notifications.filter(n => !n.read).length > 0 && (
+              <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-rose-500 rounded-full border-2 border-[#050a0a] flex items-center justify-center text-[8px] font-black text-white">
+                {notifications.filter(n => !n.read).length}
+              </span>
+            )}
           </button>
 
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 border border-white/10" />
