@@ -3,8 +3,10 @@ import Lenis from 'lenis';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { SimulationProvider } from './context/SimulationContext';
-import { Activity } from 'lucide-react';
-import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { Login } from './pages/Login';
+import { Activity, Loader2 } from 'lucide-react';
+import { BrowserRouter as Router, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 
 const PageWrapper = ({ children }: { children: React.ReactNode }) => {
@@ -24,16 +26,18 @@ const PageWrapper = ({ children }: { children: React.ReactNode }) => {
     </AnimatePresence>
   );
 };
+
 import { Dashboard } from './pages/Dashboard';
 import { EmergencyRequests } from './pages/EmergencyRequests';
 import { HospitalManagement } from './pages/HospitalManagement';
 import { HospitalDetail } from './pages/HospitalDetail';
-import { LiveMap } from './pages/LiveMap';
+import LiveMap from './pages/LiveMap';
+import { Profile } from './pages/Profile';
 import { Reports } from './pages/Reports';
-import { Notifications } from './pages/Notifications';
 import { Settings } from './pages/Settings';
 
-export default function App() {
+function AppContent() {
+  const { user, loading: authLoading } = useAuth();
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(window.innerWidth > 1024);
   const [isAppReady, setIsAppReady] = React.useState(false);
 
@@ -64,6 +68,28 @@ export default function App() {
     requestAnimationFrame(raf);
     return () => lenis.destroy();
   }, []);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#050a0a] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 text-cyan-500 animate-spin" />
+          <span className="text-[10px] font-black text-white/40 uppercase tracking-[0.3em]">Syncing Clearance...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <Router>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        </Routes>
+      </Router>
+    );
+  }
 
   return (
     <SimulationProvider>
@@ -132,11 +158,13 @@ export default function App() {
               <PageWrapper>
                 <Routes>
                   <Route path="/" element={<Dashboard />} />
+                  <Route path="/profile" element={<Profile />} />
                   <Route path="/hospitals" element={<HospitalManagement />} />
                   <Route path="/hospitals/:id" element={<HospitalDetail />} />
                   <Route path="/map" element={<LiveMap />} />
                   <Route path="/reports" element={<Reports />} />
                   <Route path="/settings" element={<Settings />} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               </PageWrapper>
             </main>
@@ -144,5 +172,13 @@ export default function App() {
         </div>
       </Router>
     </SimulationProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }

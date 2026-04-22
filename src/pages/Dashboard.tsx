@@ -357,7 +357,7 @@ export const Dashboard = () => {
                     </span>
                     <span className={cn(
                       "px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest",
-                      emergency.status === 'ASSIGNED' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                      emergency.status === 'ASSIGNED' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
                     )}>
                       {emergency.status}
                     </span>

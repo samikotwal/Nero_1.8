@@ -1,12 +1,15 @@
-import React from 'react';
-import { Bell, Search, Zap, Play, Pause, Menu, AlertCircle, Radio } from 'lucide-react';
+import React, { useState } from 'react';
+import { Bell, Search, Zap, Play, Pause, Menu, AlertCircle, Radio, LogOut, User, ChevronDown } from 'lucide-react';
 import { useSimulation } from '../context/SimulationContext';
-import { motion } from 'motion/react';
+import { useAuth } from '../context/AuthContext';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 export const Header = ({ toggleSidebar }: { toggleSidebar: () => void }) => {
     const navigate = useNavigate();
+    const { user, signOut } = useAuth();
+    const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
     const { 
       isSimulationActive, 
       toggleSimulation, 
@@ -115,7 +118,58 @@ export const Header = ({ toggleSidebar }: { toggleSidebar: () => void }) => {
             )}
           </button>
 
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 border border-white/10" />
+          <div className="relative">
+            <button 
+              onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+              className="flex items-center gap-2 p-1 pr-2 rounded-full hover:bg-white/5 transition-all border border-transparent hover:border-white/10"
+            >
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 border border-white/10 flex items-center justify-center text-[10px] font-black text-white">
+                {user?.email?.[0].toUpperCase()}
+              </div>
+              <ChevronDown className={cn("w-3 h-3 text-white/20 transition-transform", isUserMenuOpen && "rotate-180")} />
+            </button>
+
+            <AnimatePresence>
+              {isUserMenuOpen && (
+                <>
+                  <motion.div 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() => setIsUserMenuOpen(false)}
+                    className="fixed inset-0 z-10"
+                  />
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                    className="absolute right-0 mt-2 w-48 bg-[#0d1414] border border-white/10 rounded-2xl shadow-2xl z-20 overflow-hidden backdrop-blur-xl"
+                  >
+                    <div className="p-4 border-b border-white/5">
+                      <p className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-1">Authenticated As</p>
+                      <p className="text-[11px] font-bold text-white truncate">{user?.email}</p>
+                    </div>
+                    <div className="p-2">
+                      <button 
+                        onClick={() => navigate('/settings')}
+                        className="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-white/5 text-[10px] font-black text-white/60 hover:text-white uppercase tracking-widest transition-all"
+                      >
+                        <User className="w-3.5 h-3.5" />
+                        Settings
+                      </button>
+                      <button 
+                        onClick={signOut}
+                        className="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-rose-500/10 text-[10px] font-black text-rose-500/60 hover:text-rose-500 uppercase tracking-widest transition-all"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                        Sign Out
+                      </button>
+                    </div>
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
     </header>

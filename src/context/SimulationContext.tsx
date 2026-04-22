@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { fetchNearbyHealthcare, fetchHealthcareByBounds } from '../services/overpassService';
+import { fetchHospitalUpdates, updateHospitalResource, saveBooking } from '../services/hospitalDatabaseService';
 
 const springTransition = {
   type: "spring",
@@ -73,8 +74,14 @@ export interface Notification {
   title: string;
   message: string;
   type: 'info' | 'success' | 'warning' | 'error';
+  priority?: 'HIGH' | 'MEDIUM' | 'LOW';
+  resourceType?: 'ICU' | 'BED' | 'AMBULANCE' | 'SYSTEM';
+  hospitalId?: string;
+  hospitalName?: string;
   timestamp: string;
   read: boolean;
+  resolved?: boolean;
+  distance?: number;
 }
 
 interface SimulationContextType {
@@ -94,8 +101,8 @@ interface SimulationContextType {
   refreshData: () => void;
   fetchByBounds: (south: number, west: number, north: number, east: number, zoom: number) => Promise<void>;
   searchLocation: (query: string) => Promise<boolean>;
-  bookResource: (hospitalId: string, resourceType: 'bed' | 'icu') => void;
-  dispatchAmbulance: (hospitalId: string, destination: [number, number], requesterName?: string, count?: number) => void;
+  bookResource: (hospitalId: string, resourceType: 'bed' | 'icu', name: string, phone: string) => void;
+  dispatchAmbulance: (hospitalId: string, destination: [number, number], requesterName?: string, phoneNumber?: string, count?: number) => void;
   overviewStats: OverviewStats;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
@@ -104,8 +111,18 @@ interface SimulationContextType {
   statusFilter: 'all' | 'available' | 'busy';
   setStatusFilter: (filter: 'all' | 'available' | 'busy') => void;
   notifications: Notification[];
-  addNotification: (title: string, message: string, type: Notification['type']) => void;
+  addNotification: (
+    title: string, 
+    message: string, 
+    type: Notification['type'], 
+    priority?: Notification['priority'],
+    resourceType?: Notification['resourceType'],
+    hospitalId?: string,
+    hospitalName?: string,
+    distance?: number
+  ) => void;
   markNotificationsAsRead: () => void;
+  markAsRead: (id: string) => void;
   isAlreadyDispatching: boolean;
 }
 
@@ -129,6 +146,7 @@ const fetchOSRMRoute = async (start: [number, number], end: [number, number]): P
   try {
     const url = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`;
     const response = await fetch(url);
+    if (!response.ok) throw new Error(`OSRM HTTP error! status: ${response.status}`);
     const data = await response.json();
     if (data.routes && data.routes.length > 0) {
       return {
@@ -137,7 +155,7 @@ const fetchOSRMRoute = async (start: [number, number], end: [number, number]): P
       };
     }
   } catch (error) {
-    console.error("OSRM Route Fetch Error:", error);
+    // Silent fail for road route fetching - will fallback to straight-line simulation
   }
   return null;
 };
@@ -309,10 +327,48 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [filterType, setFilterType] = useState('All');
   const [statusFilter, setStatusFilter] = useState<'all' | 'available' | 'busy'>('all');
   const [isAlreadyDispatching, setIsAlreadyDispatching] = useState(false);
+  const hospitalsRef = useRef<Hospital[]>(STATIC_HOSPITALS);
+
+  // Sync ref with state
+  useEffect(() => {
+    hospitalsRef.current = hospitals;
+  }, [hospitals]);
 
   const toggleSimulation = () => setIsSimulationActive(!isSimulationActive);
 
   const isFetching = useRef(false);
+
+  const syncWithDatabase = useCallback(async (currentHospitals: Hospital[]) => {
+    const dbUpdates = await fetchHospitalUpdates();
+    if (dbUpdates.length === 0) return currentHospitals;
+
+    return currentHospitals.map(h => {
+      const update = dbUpdates.find(up => up.id === h.id);
+      if (update) {
+        const newAvailable = update.beds?.available ?? h.beds.available;
+        const total = update.beds?.total ?? h.beds.total;
+        const availabilityPercent = total > 0 ? (newAvailable / total) * 100 : 0;
+        
+        let newStatus: 'available' | 'busy' | 'full' = 'available';
+        if (availabilityPercent < 5) newStatus = 'full';
+        else if (availabilityPercent < 20) newStatus = 'busy';
+
+        return { 
+          ...h, 
+          beds: { 
+            available: newAvailable,
+            total: total 
+          },
+          icuBeds: update.icuBeds ?? h.icuBeds,
+          totalIcuBeds: update.totalIcuBeds ?? h.totalIcuBeds,
+          ambulances: update.ambulances ?? h.ambulances,
+          totalAmbulances: update.totalAmbulances ?? h.totalAmbulances,
+          status: newStatus
+        };
+      }
+      return h;
+    });
+  }, []);
 
   const refreshData = useCallback(async () => {
     if (!userLocation || isFetching.current) return;
@@ -321,29 +377,41 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // Silent update
     console.log(`Refreshing healthcare data for location: ${userLocation[0]}, ${userLocation[1]}`);
     try {
-      let realDataPromise = fetchNearbyHealthcare(userLocation[0], userLocation[1], 50000); // Expanded to 50km for full city-wide coverage
+      let realDataPromise = fetchNearbyHealthcare(userLocation[0], userLocation[1], 100000); // Expanded to 100km for absolute city-wide coverage
       
       const realData = await realDataPromise;
       
       const combined = [...STATIC_HOSPITALS, ...realData];
       const unique = combined.filter((h, index, self) => 
-        index === self.findIndex((t) => t.name === h.name)
+        index === self.findIndex((t) => t.id === h.id || t.name === h.name)
       );
       
       console.log(`Nearby search returned ${unique.length} total elements (including static).`);
       if (unique.length > 0) {
+        const topIds = ['B-GOVT', 'B-BLDE', 'B-ALAMEEN'];
         const withDistance = unique.map(h => ({
           ...h,
           distance: calculateDistance(userLocation[0], userLocation[1], h.lat, h.lng)
         })).sort((a, b) => {
-          // Prioritize injected Bijapur static hospitals
-          const isAStatic = a.id.startsWith('B-');
-          const isBStatic = b.id.startsWith('B-');
+          // Absolute priority for the 3 constant Bijapur hospitals
+          const aIndex = topIds.indexOf(a.id);
+          const bIndex = topIds.indexOf(b.id);
+          if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+          if (aIndex !== -1) return -1;
+          if (bIndex !== -1) return 1;
+
+          // Then other static/nearby hospitals
+          const isAStatic = a.id.startsWith('B-') || a.id.startsWith('F-') || a.id.startsWith('T-');
+          const isBStatic = b.id.startsWith('B-') || b.id.startsWith('F-') || b.id.startsWith('T-');
           if (isAStatic && !isBStatic) return -1;
           if (!isAStatic && isBStatic) return 1;
           return (a.distance || 0) - (b.distance || 0);
         });
         setHospitals(withDistance);
+        
+        // Sync with DB immediately after initial fetch
+        const synced = await syncWithDatabase(withDistance);
+        setHospitals(synced);
       }
     } catch (error) {
       console.error("Error in refreshData:", error);
@@ -362,24 +430,36 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const realData = await fetchHealthcareByBounds(south, west, north, east, zoom);
       console.log(`Overpass API returned ${realData.length} elements for bounds.`);
       
-      // Preserve static hospitals
-      setHospitals(prev => {
-        const combined = [...STATIC_HOSPITALS, ...realData];
-        const unique = combined.filter((h, index, self) => 
-          index === self.findIndex((t) => t.name === h.name)
-        );
-        
-        return unique.map(h => ({
-          ...h,
-          distance: userLocation ? calculateDistance(userLocation[0], userLocation[1], h.lat, h.lng) : undefined
-        })).sort((a, b) => {
-          const isAStatic = a.id.startsWith('B-');
-          const isBStatic = b.id.startsWith('B-');
-          if (isAStatic && !isBStatic) return -1;
-          if (!isAStatic && isBStatic) return 1;
-          return (a.distance || 0) - (b.distance || 0);
-        });
+      const combined = [...STATIC_HOSPITALS, ...realData];
+      // Ensure both ID and Name are unique
+      const unique = combined.filter((h, index, self) => 
+        index === self.findIndex((t) => t.id === h.id || t.name === h.name)
+      );
+      
+      const topIds = ['B-GOVT', 'B-BLDE', 'B-ALAMEEN'];
+      const finalHospitals = unique.map(h => ({
+        ...h,
+        distance: userLocation ? calculateDistance(userLocation[0], userLocation[1], h.lat, h.lng) : undefined
+      })).sort((a, b) => {
+        const aIndex = topIds.indexOf(a.id);
+        const bIndex = topIds.indexOf(b.id);
+        if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+        if (aIndex !== -1) return -1;
+        if (bIndex !== -1) return 1;
+
+        const isAStatic = a.id.startsWith('B-') || a.id.startsWith('F-') || a.id.startsWith('T-');
+        const isBStatic = b.id.startsWith('B-') || b.id.startsWith('F-') || b.id.startsWith('T-');
+        if (isAStatic && !isBStatic) return -1;
+        if (!isAStatic && isBStatic) return 1;
+        return (a.distance || 0) - (b.distance || 0);
       });
+
+      // Update state once
+      setHospitals(finalHospitals);
+
+      // Run sync in background and update state when done
+      const synced = await syncWithDatabase(finalHospitals);
+      setHospitals(synced);
     } catch (error) {
       // Silently handle bounds fetch failures
       setIsLoading(false);
@@ -387,7 +467,7 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       isFetching.current = false;
       setIsLoading(false);
     }
-  }, [userLocation]);
+  }, [userLocation, syncWithDatabase, hospitals.length]);
 
   const searchLocation = async (query: string): Promise<boolean> => {
     try {
@@ -424,13 +504,16 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   }, [userLocation, refreshData, hospitals.length]);
 
-  // Simulation loop
+  // Update simulation loop to exclude DB-synced hospitals
   useEffect(() => {
     if (!isSimulationActive) return;
 
     const interval = setInterval(() => {
-      // 1. Update Hospital Beds
+      // 1. Update Hospital Beds (Only for non-DB hospitals)
+      const topIds = ['B-GOVT', 'B-BLDE', 'B-ALAMEEN'];
       setHospitals(prev => prev.map(h => {
+        if (topIds.includes(h.id)) return h; // Skip simulation for DB hospitals
+
         const newAvailable = Math.max(0, Math.min(h.beds.total, h.beds.available + (Math.random() > 0.5 ? 1 : -1)));
         const newIcu = Math.max(0, Math.min(h.totalIcuBeds, h.icuBeds + (Math.random() > 0.8 ? 1 : Math.random() > 0.8 ? -1 : 0)));
         
@@ -484,6 +567,19 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     return () => clearInterval(interval);
   }, [isSimulationActive, emergencies]);
+
+  // Periodic DB Sync (Every 10 seconds - slowed down for stability)
+  useEffect(() => {
+    const syncInterval = setInterval(async () => {
+      try {
+        const synced = await syncWithDatabase(hospitalsRef.current);
+        setHospitals(synced);
+      } catch (err) {
+        console.error("Sync interval error:", err);
+      }
+    }, 10000);
+    return () => clearInterval(syncInterval);
+  }, [syncWithDatabase]);
 
   // Geolocation tracking
   useEffect(() => {
@@ -560,41 +656,169 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   });
 
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const lastAlertState = useRef<Record<string, 'HIGH' | 'MEDIUM' | 'NONE'>>({});
 
-  const addNotification = useCallback((title: string, message: string, type: Notification['type'] = 'info') => {
+  const addNotification = useCallback((
+    title: string, 
+    message: string, 
+    type: Notification['type'] = 'info',
+    priority?: Notification['priority'],
+    resourceType?: Notification['resourceType'],
+    hospitalId?: string,
+    hospitalName?: string,
+    distance?: number
+  ) => {
     const newNotif: Notification = {
       id: Math.random().toString(36).substr(2, 9),
       title,
       message,
       type,
+      priority,
+      resourceType,
+      hospitalId,
+      hospitalName,
+      distance,
       timestamp: new Date().toLocaleTimeString(),
-      read: false
+      read: false,
+      resolved: false
     };
-    setNotifications(prev => [newNotif, ...prev].slice(0, 20));
+    setNotifications(prev => [newNotif, ...prev].slice(0, 50));
   }, []);
 
   const markNotificationsAsRead = useCallback(() => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   }, []);
 
-  const bookResource = useCallback((hospitalId: string, resourceType: 'bed' | 'icu') => {
+  const markAsRead = useCallback((id: string) => {
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+  }, []);
+
+  // Alert Generation Engine
+  useEffect(() => {
+    hospitals.forEach(h => {
+      const hospitalKey = h.id;
+      
+      const checkResource = (
+        type: 'ICU' | 'BED' | 'AMBULANCE', 
+        val: number, 
+        criticalVal: number, 
+        warningVal: number,
+        name: string
+      ) => {
+        const key = `${hospitalKey}-${type}`;
+        let currentPriority: 'HIGH' | 'MEDIUM' | 'NONE' = 'NONE';
+        
+        if (val <= criticalVal) currentPriority = 'HIGH';
+        else if (val <= warningVal) currentPriority = 'MEDIUM';
+        
+        const lastPriority = lastAlertState.current[key] || 'NONE';
+        
+        if (currentPriority !== lastPriority) {
+          if (currentPriority === 'HIGH') {
+            addNotification(
+              `[HIGH] ${h.name} ${name} Full`,
+              `${h.name} reports zero ${name.toLowerCase()}s available. Redirect immediate cases.`,
+              'error',
+              'HIGH',
+              type,
+              h.id,
+              h.name,
+              h.distance
+            );
+          } else if (currentPriority === 'MEDIUM') {
+            addNotification(
+              `[MEDIUM] ${h.name} ${name} Almost Full`,
+              `${h.name} has only ${val} ${name.toLowerCase()}${val === 1 ? '' : 's'} left.`,
+              'warning',
+              'MEDIUM',
+              type,
+              h.id,
+              h.name,
+              h.distance
+            );
+          } else if (currentPriority === 'NONE' && lastPriority !== 'NONE') {
+            // Resource restored
+            addNotification(
+              `[LOW] ${h.name} ${name} Available`,
+              `${h.name} resources have been restored. ${val} ${name.toLowerCase()}s now available.`,
+              'success',
+              'LOW',
+              type,
+              h.id,
+              h.name,
+              h.distance
+            );
+            
+            // Mark previous alerts for this resource as resolved
+            setNotifications(prev => prev.map(n => 
+              (n.hospitalId === h.id && n.resourceType === type) ? { ...n, resolved: true } : n
+            ));
+          }
+          lastAlertState.current[key] = currentPriority;
+        }
+      };
+
+      // ICU Monitoring
+      checkResource('ICU', h.icuBeds, 0, 2, 'ICU');
+      // Beds Monitoring
+      checkResource('BED', h.beds.available, 0, 5, 'Bed');
+      // Ambulance Monitoring
+      checkResource('AMBULANCE', h.ambulances, 0, 1, 'Ambulance');
+    });
+  }, [hospitals, addNotification]);
+
+  const bookResource = useCallback((hospitalId: string, resourceType: 'bed' | 'icu', name: string, phone: string) => {
     setHospitals(prev => prev.map(h => {
       if (h.id === hospitalId) {
         const update = { ...h };
+        const topIds = ['B-GOVT', 'B-BLDE', 'B-ALAMEEN'];
+        const isDBSynced = topIds.includes(h.id);
+
+        // Only save to DB for specific hospitals
+        if (isDBSynced) {
+          saveBooking({
+            hospital_id: h.id,
+            hospital_name: h.name,
+            resource_type: resourceType.toUpperCase(),
+            patient_name: name,
+            contact_number: phone,
+            timestamp: new Date().toISOString()
+          });
+        }
+
         if (resourceType === 'bed' && h.beds.available > 0) {
-          update.beds = { ...h.beds, available: h.beds.available - 1 };
+          const newVal = h.beds.available - 1;
+          update.beds = { ...h.beds, available: newVal };
           setOverviewStats(s => ({ ...s, occupiedBeds: s.occupiedBeds + 1 }));
+          if (isDBSynced) updateHospitalResource(h.id, 'available_beds', newVal);
+          
+          addNotification(
+            'Bed Booked',
+            `Bed successfully reserved for ${name} at ${h.name}.`,
+            'success'
+          );
+
+          // Force sync with database after booking
+          setTimeout(refreshData, 1500);
         } else if (resourceType === 'icu' && h.icuBeds > 0) {
-          update.icuBeds = h.icuBeds - 1;
+          const newVal = h.icuBeds - 1;
+          update.icuBeds = newVal;
           setOverviewStats(s => ({ ...s, occupiedIcu: s.occupiedIcu + 1 }));
+          if (isDBSynced) updateHospitalResource(h.id, 'available_icu', newVal);
+
+          addNotification(
+            'ICU Bed Booked',
+            `ICU Bed successfully reserved for ${name} at ${h.name}.`,
+            'success'
+          );
         }
         return update;
       }
       return h;
     }));
-  }, []);
+  }, [addNotification]);
 
-  const dispatchAmbulance = useCallback(async (hospitalId: string, destination: [number, number], requesterName: string = 'Emergency', count: number = 1) => {
+  const dispatchAmbulance = useCallback(async (hospitalId: string, destination: [number, number], requesterName: string = 'Emergency', phoneNumber: string = 'Not Provided', count: number = 1) => {
     if (isAlreadyDispatching) {
       addNotification('Request Denied', 'An ambulance is already in transit. Please wait for the current mission to complete.', 'warning');
       return;
@@ -603,24 +827,41 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const hospital = hospitals.find(h => h.id === hospitalId);
     if (!hospital || hospital.ambulances < count) return;
 
+    const topIds = ['B-GOVT', 'B-BLDE', 'B-ALAMEEN'];
+    const isDBSynced = topIds.includes(hospitalId);
+
+    // Only save dispatch to DB for specific hospitals
+    if (isDBSynced) {
+      saveBooking({
+        hospital_id: hospital.id,
+        hospital_name: hospital.name,
+        resource_type: 'AMBULANCE',
+        patient_name: requesterName,
+        contact_number: phoneNumber,
+        timestamp: new Date().toISOString()
+      });
+    }
+
     setIsAlreadyDispatching(true);
     setIsLoading(true);
     // Fetch the real road route once for all units in this dispatch
     const osrmData = await fetchOSRMRoute([hospital.lat, hospital.lng], destination);
     setIsLoading(false);
 
+    const newResponders: Responder[] = [];
+    
+    // Update Hospital State (Outermost)
     setHospitals(prev => prev.map(h => {
       if (h.id === hospitalId && h.ambulances >= count) {
         const hLat = h.lat;
         const hLng = h.lng;
         
-        // Spawn responders
+        // Prepare spawn responders
         for (let i = 0; i < count; i++) {
           const responderId = `AMB-${Math.random().toString(36).substr(2, 9)}`;
           const distance = calculateDistance(hLat, hLng, destination[0], destination[1]);
           const speed = 40 + Math.random() * 15; // km/h
           
-          // Use OSRM duration if available for "Real Time" travel
           const totalTimeSeconds = osrmData ? osrmData.duration : Math.max(20, (distance / speed) * 3600); 
           const route = osrmData ? osrmData.coordinates : generateRoute([hLat, hLng], destination);
           
@@ -638,14 +879,8 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             totalTime: totalTimeSeconds
           };
           
-          setResponders(r => [...r, newResponder]);
+          newResponders.push(newResponder);
           
-          addNotification(
-            'Dispatch Confirmed',
-            `Ambulance ${responderId.split('-')[1]} is on its way to ${requesterName}. ETA: ${Math.round(distance/speed * 60)} mins`,
-            'info'
-          );
-
           // Mission Sequence using requestAnimationFrame
           let animationStartTime = Date.now();
           
@@ -671,16 +906,21 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     'success'
                   );
 
-                  // Send Email Notification
+                  // Send Email Notification (Silent fail but logged)
                   fetch('/api/send-arrival-email', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                       to: 'samikotwal450@gmail.com',
                       requesterName,
+                      phoneNumber,
                       ambulanceId: responderId.split('-')[1]
                     })
-                  }).catch(console.error);
+                  }).then(res => {
+                    if (!res.ok) console.warn("Email API returned status:", res.status);
+                  }).catch(err => {
+                    console.error("Critical: Email API fetch failed:", err);
+                  });
 
                   setHospitals(hosps => hosps.map(hosp => hosp.id === hospitalId ? {
                     ...hosp,
@@ -728,6 +968,15 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                                completedAmbulances: Math.max(0, hosp.completedAmbulances - 1),
                                ambulances: Math.min(hosp.totalAmbulances, hosp.ambulances + 1)
                             } : hosp));
+                            
+                            const topIds = ['B-GOVT', 'B-BLDE', 'B-ALAMEEN'];
+                            if (topIds.includes(hospitalId)) {
+                              const currentHosp = hospitals.find(x => x.id === hospitalId);
+                              if (currentHosp) {
+                                updateHospitalResource(hospitalId, 'available_ambulance', Math.min(currentHosp.totalAmbulances, currentHosp.ambulances + 1));
+                              }
+                            }
+
                             setIsAlreadyDispatching(false);
                           }, 3000);
                           
@@ -765,6 +1014,11 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
         setOverviewStats(s => ({ ...s, busyAmbulances: s.busyAmbulances + count }));
 
+        const topIds = ['B-GOVT', 'B-BLDE', 'B-ALAMEEN'];
+        if (topIds.includes(hospitalId)) {
+          updateHospitalResource(hospitalId, 'available_ambulance', Math.max(0, hospital.ambulances - count));
+        }
+
         return {
           ...h,
           ambulances: Math.max(0, h.ambulances - count),
@@ -773,7 +1027,19 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
       return h;
     }));
-  }, [calculateDistance, addNotification, hospitals]);
+
+    // Set responders AFTER hospital update to avoid nesting
+    setResponders(r => [...r, ...newResponders]);
+    
+    // Notifications also after
+    newResponders.forEach(nr => {
+       addNotification(
+        'Dispatch Confirmed',
+        `Ambulance ${nr.id.split('-')[1]} is on its way to ${requesterName}.`,
+        'info'
+      );
+    });
+  }, [calculateDistance, addNotification, hospitals, isAlreadyDispatching]);
 
   return (
     <SimulationContext.Provider value={{
@@ -805,6 +1071,7 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       notifications,
       addNotification,
       markNotificationsAsRead,
+      markAsRead,
       isAlreadyDispatching
     }}>
       {children}

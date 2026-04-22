@@ -39,7 +39,10 @@ import {
   ChevronDown,
   ChevronUp,
   User,
-  Truck
+  Truck,
+  Phone,
+  X as CloseIcon,
+  Info as InfoIcon
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -193,7 +196,7 @@ const MapController = ({
   return null;
 };
 
-export const LiveMap = () => {
+const LiveMap = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { 
@@ -223,6 +226,8 @@ export const LiveMap = () => {
   const [expandedAmbId, setExpandedAmbId] = useState<string | null>(null);
   const [ambDestination, setAmbDestination] = useState("");
   const [requesterName, setRequesterName] = useState("");
+  const [requesterPhone, setRequesterPhone] = useState("");
+  const [bookingTarget, setBookingTarget] = useState<{hospital: any, type: 'bed' | 'icu'} | null>(null);
   const [ambCount, setAmbCount] = useState(1);
   const [sidebarBedCount, setSidebarBedCount] = useState<Record<string, number>>({});
   const [sidebarIcuCount, setSidebarIcuCount] = useState<Record<string, number>>({});
@@ -399,8 +404,8 @@ export const LiveMap = () => {
       // If searching, show everything that matched the search query
       return sortedHospitals;
     }
-    // If not searching, show strictly nearby (2km) for a tight sector lock
-    return sortedHospitals.filter(h => (h.distance || 0) <= 2);
+    // If not searching, show strictly nearby (10km) for a tight sector lock
+    return sortedHospitals.filter(h => (h.distance || 0) <= 10);
   }, [sortedHospitals, searchQuery]);
 
   const sortedHospitalsWithoutSelected = useMemo(() => {
@@ -473,6 +478,7 @@ export const LiveMap = () => {
         const response = await fetch(
           `https://router.project-osrm.org/route/v1/driving/${sCoords[1]},${sCoords[0]};${dCoords[1]},${dCoords[0]}?overview=full&geometries=geojson&steps=true`
         );
+        if (!response.ok) throw new Error(`OSRM error! status: ${response.status}`);
         const data = await response.json();
         
         if (data.routes && data.routes.length > 0) {
@@ -495,7 +501,7 @@ export const LiveMap = () => {
           setSelectedHospital(null);
         }
       } catch (error) {
-        console.error("Routing error:", error);
+        // Silent fail for routing
       }
     }
     setIsLoading(false);
@@ -519,6 +525,7 @@ export const LiveMap = () => {
       const response = await fetch(
         `https://router.project-osrm.org/route/v1/driving/${userLocation[1]},${userLocation[0]};${destLng},${destLat}?overview=full&geometries=geojson&steps=true`
       );
+      if (!response.ok) throw new Error(`OSRM error! status: ${response.status}`);
       const data = await response.json();
       console.log("OSRM Route Data:", data);
         if (data.routes && data.routes.length > 0) {
@@ -530,7 +537,7 @@ export const LiveMap = () => {
           });
         }
     } catch (error) {
-      console.error("Error fetching route:", error);
+      // Silent fail for route fetching
     }
   };
 
@@ -548,103 +555,106 @@ export const LiveMap = () => {
   );
 
   return (
-    <div className="space-y-4 pb-12 relative max-w-7xl mx-auto px-4">
+    <div className="space-y-6 pb-12 relative w-full px-0 lg:px-0">
       {/* Header Section - Slimmer Planner */}
-      <div className="flex flex-col gap-4 bg-[#0d1414]/90 p-5 border border-white/10 backdrop-blur-3xl shadow-2xl">
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3">
-          <div className="flex items-center gap-3 w-full lg:w-auto">
-            <div className="w-10 h-10 bg-cyan-500/20 flex items-center justify-center border border-cyan-500/30">
-              <RouteIcon className="w-5 h-5 text-cyan-400" />
+      <div className="mx-4 lg:mx-8">
+        <div className="flex flex-col gap-4 bg-[#0d1414]/90 p-5 border border-white/10 backdrop-blur-3xl shadow-2xl rounded-[2rem]">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3">
+            <div className="flex items-center gap-3 w-full lg:w-auto">
+              <div className="w-10 h-10 bg-cyan-500/20 flex items-center justify-center border border-cyan-500/30">
+                <RouteIcon className="w-5 h-5 text-cyan-400" />
+              </div>
+              <div>
+                <h2 className="text-lg font-black tracking-tight text-white uppercase italic">Route Intel</h2>
+                <p className="text-[8px] font-black text-cyan-400/60 uppercase tracking-widest leading-none">V 2.0.4 - ACTIVE</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-lg font-black tracking-tight text-white uppercase italic">Route Intel</h2>
-              <p className="text-[8px] font-black text-cyan-400/60 uppercase tracking-widest leading-none">V 2.0.4 - ACTIVE</p>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => navigate('/profile')}
+                className="p-2 rounded-lg bg-white/5 border border-white/10 text-white/60 hover:text-white transition-all shadow-lg flex items-center gap-2"
+              >
+                <User className="w-4 h-4" />
+                <span className="text-[8px] font-black uppercase tracking-widest hidden sm:inline">Tactical Profile</span>
+              </button>
+              <button 
+                onClick={() => {
+                  setSourceQuery('My Location');
+                  setDestQuery('');
+                  setRoute([]);
+                  setPlannerResult(null);
+                  setRouteInfo(null);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-[8px] font-black uppercase tracking-widest text-white/40 hover:text-white transition-all"
+              >
+                Reset
+              </button>
+              <button 
+                onClick={() => setMapType(mapType === 'street' ? 'satellite' : 'street')}
+                className="p-2 rounded-lg bg-white/5 border border-white/10 text-white/60 hover:text-white transition-all shadow-lg"
+              >
+                <Layers className="w-4 h-4" />
+              </button>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={() => navigate('/profile')}
-              className="p-2 rounded-lg bg-white/5 border border-white/10 text-white/60 hover:text-white transition-all shadow-lg flex items-center gap-2"
-            >
-              <User className="w-4 h-4" />
-              <span className="text-[8px] font-black uppercase tracking-widest hidden sm:inline">Tactical Profile</span>
-            </button>
-            <button 
-              onClick={() => {
-                setSourceQuery('My Location');
-                setDestQuery('');
-                setRoute([]);
-                setPlannerResult(null);
-                setRouteInfo(null);
-              }}
-              className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-[8px] font-black uppercase tracking-widest text-white/40 hover:text-white transition-all"
-            >
-              Reset
-            </button>
-            <button 
-              onClick={() => setMapType(mapType === 'street' ? 'satellite' : 'street')}
-              className="p-2 rounded-lg bg-white/5 border border-white/10 text-white/60 hover:text-white transition-all shadow-lg"
-            >
-              <Layers className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Planner Inputs - Grid Optimization */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-          <div className="md:col-span-5 relative group">
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-              <div className="w-1 h-1 rounded-full bg-emerald-500"></div>
-              <span className="text-[7px] font-black text-white/20 uppercase tracking-widest">Source</span>
-            </div>
-            <input 
-              type="text"
-              value={sourceQuery}
-              onChange={(e) => setSourceQuery(e.target.value)}
-              placeholder="Starting point..."
-              className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-16 pr-3 text-xs font-bold text-white placeholder:text-white/10 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 transition-all"
-            />
-          </div>
-          
-          <div className="hidden md:flex items-center justify-center md:col-span-1">
-            <ArrowRight className="w-3 h-3 text-white/10" />
           </div>
 
-          <div className="md:col-span-5 relative group">
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-              <div className="w-1 h-1 rounded-full bg-rose-500"></div>
-              <span className="text-[7px] font-black text-white/20 uppercase tracking-widest">Target</span>
+          {/* Planner Inputs - Grid Optimization */}
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+            <div className="md:col-span-5 relative group">
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                <div className="w-1 h-1 rounded-full bg-emerald-500"></div>
+                <span className="text-[7px] font-black text-white/20 uppercase tracking-widest">Source</span>
+              </div>
+              <input 
+                type="text"
+                value={sourceQuery}
+                onChange={(e) => setSourceQuery(e.target.value)}
+                placeholder="Starting point..."
+                className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-16 pr-3 text-xs font-bold text-white placeholder:text-white/10 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 transition-all"
+              />
             </div>
-            <input 
-              type="text"
-              value={destQuery}
-              onChange={(e) => setDestQuery(e.target.value)}
-              placeholder="Destination..."
-              className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-16 pr-3 text-xs font-bold text-white placeholder:text-white/10 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 transition-all"
-            />
-          </div>
+            
+            <div className="hidden md:flex items-center justify-center md:col-span-1">
+              <ArrowRight className="w-3 h-3 text-white/10" />
+            </div>
 
-          <button 
-            onClick={handlePlanRoute}
-            disabled={!sourceQuery.trim() || !destQuery.trim() || isPlanning}
-            className="md:col-span-1 py-2.5 rounded-xl bg-cyan-500 text-white font-black hover:bg-cyan-400 transition-all disabled:opacity-30 flex items-center justify-center group"
-          >
-            {isPlanning ? (
-              <RefreshCw className="w-4 h-4 animate-spin" />
-            ) : (
-              <Send className="w-4 h-4" />
-            )}
-          </button>
+            <div className="md:col-span-5 relative group">
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                <div className="w-1 h-1 rounded-full bg-rose-500"></div>
+                <span className="text-[7px] font-black text-white/20 uppercase tracking-widest">Target</span>
+              </div>
+              <input 
+                type="text"
+                value={destQuery}
+                onChange={(e) => setDestQuery(e.target.value)}
+                placeholder="Destination..."
+                className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-16 pr-3 text-xs font-bold text-white placeholder:text-white/10 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 transition-all"
+              />
+            </div>
+
+            <button 
+              onClick={handlePlanRoute}
+              disabled={!sourceQuery.trim() || !destQuery.trim() || isPlanning}
+              className="md:col-span-1 py-2.5 rounded-xl bg-cyan-500 text-white font-black hover:bg-cyan-400 transition-all disabled:opacity-30 flex items-center justify-center group"
+            >
+              {isPlanning ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Map Container - Dynamic Sizing */}
-      <div className={cn(
-        "glass-card overflow-hidden relative border-white/10 shadow-2xl transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)]",
-        isExpanded 
-          ? "fixed inset-0 z-[5000] rounded-none h-screen w-screen bg-[#090f0f]" 
-          : "h-[45vh] lg:h-[calc(100vh-400px)] min-h-[400px] rounded-[2rem]"
-      )}>
+      {/* Map Container - Full Width Expansion */}
+      <div className="flex flex-col gap-6">
+        <div className={cn(
+          "overflow-hidden relative border-y border-white/10 shadow-2xl transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)]",
+          isExpanded 
+            ? "fixed inset-0 z-[5000] rounded-none h-screen w-screen bg-[#090f0f]" 
+            : "h-[60vh] lg:h-[calc(100vh-350px)] min-h-[500px]"
+        )}>
         {followUser && (
           <div className="absolute inset-0 pointer-events-none border-[20px] border-cyan-500/5 z-[1000] rounded-[1.5rem]">
             <div className="absolute top-4 left-4 px-3 py-1 rounded-full bg-cyan-500 text-white text-[8px] font-black uppercase tracking-widest animate-pulse flex items-center gap-2">
@@ -803,26 +813,28 @@ export const LiveMap = () => {
                         </div>
                       </div>
                       
-                      <div className="grid grid-cols-2 gap-3 mb-6">
-                        <div className="bg-white/5 rounded-2xl p-3 border border-white/5">
-                          <p className="text-[7px] font-black text-white/20 uppercase tracking-widest mb-1">ICU</p>
-                          <div className="flex items-center gap-1.5">
-                             <Activity className="w-3 h-3 text-rose-500" />
-                             <span className="text-xs font-black text-rose-400 italic">
-                               {h.icuBeds}/{h.totalIcuBeds || 20}
-                             </span>
+                      {h.type === 'Hospital' && (
+                        <div className="grid grid-cols-2 gap-3 mb-6">
+                          <div className="bg-white/5 rounded-2xl p-3 border border-white/5">
+                            <p className="text-[7px] font-black text-white/20 uppercase tracking-widest mb-1">ICU</p>
+                            <div className="flex items-center gap-1.5">
+                               <Activity className="w-3 h-3 text-rose-500" />
+                               <span className="text-xs font-black text-rose-400 italic">
+                                 {h.icuBeds}/{h.totalIcuBeds || 20}
+                               </span>
+                            </div>
+                          </div>
+                          <div className="bg-white/5 rounded-2xl p-3 border border-white/5">
+                            <p className="text-[7px] font-black text-white/20 uppercase tracking-widest mb-1">Beds</p>
+                            <div className="flex items-center gap-1.5">
+                               <Bed className="w-3 h-3 text-emerald-500" />
+                               <span className="text-xs font-black text-emerald-400 italic">
+                                 {typeof h.beds === 'object' ? h.beds.available : h.beds}/{typeof h.beds === 'object' ? h.beds.total : 400}
+                               </span>
+                            </div>
                           </div>
                         </div>
-                        <div className="bg-white/5 rounded-2xl p-3 border border-white/5">
-                          <p className="text-[7px] font-black text-white/20 uppercase tracking-widest mb-1">Beds</p>
-                          <div className="flex items-center gap-1.5">
-                             <Bed className="w-3 h-3 text-emerald-500" />
-                             <span className="text-xs font-black text-emerald-400 italic">
-                               {typeof h.beds === 'object' ? h.beds.available : h.beds}/{typeof h.beds === 'object' ? h.beds.total : 400}
-                             </span>
-                          </div>
-                        </div>
-                      </div>
+                      )}
 
                       <div className="flex gap-2">
                         <button 
@@ -886,26 +898,28 @@ export const LiveMap = () => {
                       </div>
                     </div>
                     
-                    <div className="grid grid-cols-2 gap-3 mb-6">
-                      <div className="bg-white/5 rounded-2xl p-3 border border-white/5">
-                        <p className="text-[7px] font-black text-white/20 uppercase tracking-widest mb-1">ICU</p>
-                        <div className="flex items-center gap-1.5">
-                           <Activity className="w-3 h-3 text-rose-500" />
-                           <span className="text-xs font-black text-rose-400 italic">
-                             {selectedHospital.icuBeds}/{selectedHospital.totalIcuBeds || 20}
-                           </span>
+                    {selectedHospital.type === 'Hospital' && (
+                      <div className="grid grid-cols-2 gap-3 mb-6">
+                        <div className="bg-white/5 rounded-2xl p-3 border border-white/5">
+                          <p className="text-[7px] font-black text-white/20 uppercase tracking-widest mb-1">ICU</p>
+                          <div className="flex items-center gap-1.5">
+                             <Activity className="w-3 h-3 text-rose-500" />
+                             <span className="text-xs font-black text-rose-400 italic">
+                               {selectedHospital.icuBeds}/{selectedHospital.totalIcuBeds || 20}
+                             </span>
+                          </div>
+                        </div>
+                        <div className="bg-white/5 rounded-2xl p-3 border border-white/5">
+                          <p className="text-[7px] font-black text-white/20 uppercase tracking-widest mb-1">Beds</p>
+                          <div className="flex items-center gap-1.5">
+                             <Bed className="w-3 h-3 text-emerald-500" />
+                             <span className="text-xs font-black text-emerald-400 italic">
+                               {typeof selectedHospital.beds === 'object' ? selectedHospital.beds.available : selectedHospital.beds}/{typeof selectedHospital.beds === 'object' ? selectedHospital.beds.total : 400}
+                             </span>
+                          </div>
                         </div>
                       </div>
-                      <div className="bg-white/5 rounded-2xl p-3 border border-white/5">
-                        <p className="text-[7px] font-black text-white/20 uppercase tracking-widest mb-1">Beds</p>
-                        <div className="flex items-center gap-1.5">
-                           <Bed className="w-3 h-3 text-emerald-500" />
-                           <span className="text-xs font-black text-emerald-400 italic">
-                             {typeof selectedHospital.beds === 'object' ? selectedHospital.beds.available : selectedHospital.beds}/{typeof selectedHospital.beds === 'object' ? selectedHospital.beds.total : 400}
-                           </span>
-                        </div>
-                      </div>
-                    </div>
+                    )}
 
                     <div className="flex gap-2">
                        <button 
@@ -1056,201 +1070,9 @@ export const LiveMap = () => {
           </button>
         </div>
       </div>
-
-      {/* Feature Restoration: Facility Watchlist */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between px-1">
-            <div className="flex items-center gap-2">
-              <Activity className="w-4 h-4 text-emerald-400" />
-              <h3 className="text-[10px] font-black text-white uppercase tracking-[0.2em]">Facility Watchlist</h3>
-            </div>
-            
-            <div className="flex gap-4 mb-4">
-              <div className="bg-white/5 border border-white/10 rounded-2xl px-4 py-2 flex flex-col items-center justify-center min-w-[100px]">
-                <span className="text-[7px] font-black text-white/40 uppercase tracking-widest mb-1">Occupied Beds</span>
-                <span className="text-sm font-black text-emerald-400 italic">{overviewStats.occupiedBeds}</span>
-              </div>
-              <div className="bg-white/5 border border-white/10 rounded-2xl px-4 py-2 flex flex-col items-center justify-center min-w-[100px]">
-                <span className="text-[7px] font-black text-white/40 uppercase tracking-widest mb-1">Occupied ICU</span>
-                <span className="text-sm font-black text-rose-500 italic">{overviewStats.occupiedIcu}</span>
-              </div>
-            </div>
-
-            <div className="flex gap-1">
-              {['All', 'Hospital', 'Medical Center', 'Medical Store'].map(type => (
-                <button 
-                  key={type}
-                  onClick={() => setFilterType(type)}
-                  className={cn(
-                    "px-2 py-0.5 rounded text-[7px] font-black uppercase tracking-widest transition-all border",
-                    filterType === type ? "bg-cyan-500 border-cyan-400 text-white" : "bg-white/5 border-white/10 text-white/40"
-                  )}
-                >
-                  {type}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 custom-scrollbar pr-1">
-            {nearbyFacilities.slice(0, visibleCount).map(h => (
-              <motion.div 
-                key={h.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="group relative bg-[#090f0f] p-5 border border-white/5 hover:border-cyan-500/30 transition-all cursor-pointer shadow-2xl flex flex-col rounded-[2.5rem]"
-              >
-                <div className="flex justify-between items-start mb-4">
-                  <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-lg">
-                    {h.type === 'Hospital' ? '🏥' : h.type === 'Medical Center' ? '🏢' : '💊'}
-                  </div>
-                  <div className={cn(
-                    "px-3 py-1 text-[7px] font-black uppercase tracking-widest border",
-                    h.status === 'available' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-rose-500/10 text-rose-400 border-rose-500/20"
-                  )}>
-                    {h.status}
-                  </div>
-                </div>
-
-                <div className="flex-1 min-w-0 flex flex-col gap-1 relative z-10 cursor-pointer mb-4" onClick={() => navigate(`/hospitals/${h.id}`)}>
-                  <h4 className="text-sm font-black text-white uppercase italic group-hover:text-cyan-400 transition-colors tracking-tight">
-                    {h.name}
-                  </h4>
-                  <div className="flex items-center gap-1.5 overflow-hidden">
-                    <MapPin className="w-2.5 h-2.5 text-cyan-400/40 shrink-0" />
-                    <p className="text-[7px] font-bold text-white/20 uppercase line-clamp-1">{h.address}</p>
-                  </div>
-                </div>
-
-                {/* Integrated Tactical Monitoring & Control */}
-                <div className="space-y-4 relative z-10 mt-auto">
-                  <div className="grid grid-cols-3 gap-2">
-                    <button 
-                      disabled={h.icuBeds === 0}
-                      onClick={(e) => { e.stopPropagation(); bookResource(h.id, 'icu'); }}
-                      className={cn(
-                        "bg-white/[0.04] p-2 rounded-xl border border-white/5 hover:bg-rose-500/10 transition-all flex flex-col items-center justify-center gap-1 group/btn",
-                        h.icuBeds === 0 && "opacity-30 grayscale cursor-not-allowed"
-                      )}
-                    >
-                      <span className="text-[6px] font-black text-rose-500/60 uppercase tracking-widest leading-none">ICU BEDS</span>
-                      <div className="flex items-center gap-1">
-                        <Activity className="w-2.5 h-2.5 text-rose-500" />
-                        <span className="text-[11px] font-black text-white italic">{h.icuBeds}</span>
-                      </div>
-                    </button>
-
-                    <button 
-                      disabled={h.beds.available === 0}
-                      onClick={(e) => { e.stopPropagation(); bookResource(h.id, 'bed'); }}
-                      className={cn(
-                        "bg-white/[0.04] p-2 rounded-xl border border-white/5 hover:bg-emerald-500/10 transition-all flex flex-col items-center justify-center gap-1 group/btn",
-                        h.beds.available === 0 && "opacity-30 grayscale cursor-not-allowed"
-                      )}
-                    >
-                      <span className="text-[6px] font-black text-emerald-500/60 uppercase tracking-widest leading-none">GEN BEDS</span>
-                      <div className="flex items-center gap-1">
-                        <Bed className="w-2.5 h-2.5 text-emerald-500" />
-                        <span className="text-[11px] font-black text-white italic">{h.beds.available}</span>
-                      </div>
-                    </button>
-
-                    <button 
-                      onClick={(e) => { 
-                        e.stopPropagation(); 
-                        setExpandedAmbId(expandedAmbId === h.id ? null : h.id);
-                        setAmbDestination("");
-                      }}
-                      className="bg-white/[0.04] p-2 rounded-xl border border-white/5 hover:bg-cyan-500/10 transition-all flex flex-col items-center justify-center gap-1"
-                    >
-                      <span className="text-[6px] font-black text-cyan-400/60 uppercase tracking-widest leading-none">AMB</span>
-                      <div className="flex items-center gap-1">
-                        <Truck className="w-2.5 h-2.5 text-cyan-400" />
-                        <span className="text-[11px] font-black text-white italic">{h.ambulances}</span>
-                        <ChevronDown className={cn("w-2 h-2 text-white/20 transition-transform", expandedAmbId === h.id ? "rotate-180" : "rotate-0")} />
-                      </div>
-                    </button>
-                  </div>
-
-                  <AnimatePresence>
-                    {expandedAmbId === h.id && (
-                      <motion.div 
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="overflow-hidden relative z-20"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div className="p-3 bg-[#050a0a] border border-white/10 rounded-2xl space-y-2 mb-2">
-                          <input 
-                            type="text" 
-                            placeholder="Enter Destination"
-                            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-bold text-white uppercase outline-none focus:border-cyan-500/40 transition-colors"
-                            value={ambDestination}
-                            onChange={(e) => setAmbDestination(e.target.value)}
-                          />
-                          <button 
-                            onClick={async () => {
-                              if (!ambDestination) return;
-                              const coords = ambDestination.split(',').map(s => parseFloat(s.trim()));
-                              if (coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
-                                dispatchAmbulance(h.id, [coords[0], coords[1]]);
-                              } else {
-                                dispatchAmbulance(h.id, [h.lat + 0.01, h.lng + 0.01]);
-                              }
-                              setExpandedAmbId(null);
-                              setAmbDestination("");
-                            }}
-                            className="w-full py-2 bg-cyan-500 rounded-xl text-[10px] font-black text-white uppercase tracking-widest hover:bg-cyan-400 active:scale-[0.98] transition-all shadow-lg"
-                          >
-                            Dispatch Unit
-                          </button>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  <div className="flex items-center justify-between px-3 py-2.5 bg-white/[0.02] border border-white/5 rounded-2xl relative z-10 group/status-row">
-                    <div className="flex flex-col items-center">
-                      <span className="text-[6px] font-bold text-white/30 uppercase tracking-widest mb-0.5">Busy</span>
-                      <span className="text-[11px] font-black italic text-rose-500 tracking-tighter">{h.busyAmbulances}</span>
-                    </div>
-                    <div className="w-px h-6 bg-white/5" />
-                    <div className="flex flex-col items-center">
-                      <span className="text-[6px] font-bold text-white/30 uppercase tracking-widest mb-0.5">Proc</span>
-                      <span className="text-[11px] font-black italic text-amber-500 tracking-tighter">{h.processingAmbulances}</span>
-                    </div>
-                    <div className="w-px h-6 bg-white/5" />
-                    <div className="flex flex-col items-center">
-                      <span className="text-[6px] font-bold text-white/30 uppercase tracking-widest mb-0.5">Done</span>
-                      <span className="text-[11px] font-black italic text-emerald-500 tracking-tighter">{h.completedAmbulances}</span>
-                    </div>
-                  </div>
-
-                  <div 
-                    onClick={() => navigate(`/hospitals/${h.id}`)}
-                    className="pt-3 border-t border-white/5 flex items-center justify-between text-cyan-400/40 hover:text-cyan-400 transition-all opacity-60 group-hover:opacity-100"
-                  >
-                    <span className="text-[9px] font-black uppercase tracking-widest italic leading-none">Facility Profile</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-          
-          {visibleCount < nearbyFacilities.length && (
-            <div className="flex justify-center mt-10">
-              <button 
-                onClick={() => setVisibleCount(prev => prev + 6)}
-                className="group relative px-10 py-4 rounded-3xl bg-white/5 border border-white/10 hover:border-cyan-500/30 transition-all flex items-center gap-3"
-              >
-                <Plus className="w-4 h-4 text-cyan-400 group-hover:rotate-90 transition-transform duration-500" />
-                <span className="text-[10px] font-black text-white uppercase tracking-[0.3em]">Load More Facilities</span>
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-  );
+    </div>
+  </div>
+);
 };
+
+export default LiveMap;

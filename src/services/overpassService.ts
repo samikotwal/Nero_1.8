@@ -87,7 +87,7 @@ const executeOverpassQuery = async (query: string): Promise<any[]> => {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json' 
+          'Accept': 'application/json'
         },
         body: `data=${encodeURIComponent(query)}`,
         signal: controller.signal
@@ -126,7 +126,7 @@ const executeOverpassQuery = async (query: string): Promise<any[]> => {
   }
 };
 
-export const fetchNearbyHealthcare = async (lat: number, lng: number, radius: number = 30000): Promise<Hospital[]> => {
+export const fetchNearbyHealthcare = async (lat: number, lng: number, radius: number = 50000): Promise<Hospital[]> => {
   const amenities = 'hospital|clinic|pharmacy|doctors';
   const query = `
     [out:json][timeout:15];

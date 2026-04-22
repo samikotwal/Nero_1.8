@@ -7,6 +7,7 @@ import {
   BarChart3, 
   Bell, 
   Settings,
+  User,
   ChevronLeft,
   ChevronRight,
   Activity,
@@ -21,11 +22,10 @@ import { motion, AnimatePresence } from 'motion/react';
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
-  { icon: AlertTriangle, label: 'Emergency Requests', path: '/emergency' },
+  { icon: User, label: 'User Profile', path: '/profile' },
   { icon: Hospital, label: 'Hospital Management', path: '/hospitals' },
   { icon: MapIcon, label: 'Live Map', path: '/map' },
-  { icon: BarChart3, label: 'Reports & Analytics', path: '/reports' },
-  { icon: Bell, label: 'Alerts & Notifications', path: '/notifications' },
+  { icon: BarChart3, label: 'Reports & Analysis', path: '/reports' },
   { icon: Settings, label: 'Settings', path: '/settings' },
 ];
 

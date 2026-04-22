@@ -16,11 +16,20 @@ import {
   Thermometer,
   Droplets,
   Users,
-  Truck
+  Truck,
+  Phone,
+  User
 } from 'lucide-react';
 import { Counter } from '../components/Counter';
 import { cn } from '../lib/utils';
 import { AnimatePresence } from 'motion/react';
+import { 
+  AlertCircle,
+  CheckCircle2,
+  X as CloseIcon,
+  Stethoscope,
+  Info as InfoIcon
+} from 'lucide-react';
 
 const springTransition: any = {
   type: "spring",
@@ -28,17 +37,35 @@ const springTransition: any = {
   damping: 12
 };
 
+import { fetchRecentBookings } from '../services/hospitalDatabaseService';
+
 export const HospitalManagement = () => {
   const navigate = useNavigate();
   const { hospitals, isLoading, searchQuery, setSearchQuery, bookResource, dispatchAmbulance, overviewStats } = useSimulation();
   const [visibleCount, setVisibleCount] = React.useState(20);
   const [selectedSpecialty, setSelectedSpecialty] = React.useState('All');
   const [expandedAmbId, setExpandedAmbId] = React.useState<string | null>(null);
+  const [expandedBedId, setExpandedBedId] = React.useState<string | null>(null);
   const [ambDestination, setAmbDestination] = React.useState("");
+  const [requesterName, setRequesterName] = React.useState("");
+  const [requesterPhone, setRequesterPhone] = React.useState("");
+  
+  const [recentBookings, setRecentBookings] = React.useState<any[]>([]);
+  const [isBookingsLoading, setIsBookingsLoading] = React.useState(false);
+
+  const loadBookings = React.useCallback(async () => {
+    setIsBookingsLoading(true);
+    const data = await fetchRecentBookings();
+    setRecentBookings(data || []);
+    setIsBookingsLoading(false);
+  }, []);
+
+  React.useEffect(() => {
+    loadBookings();
+  }, [loadBookings]);
 
   // Resource Calculations
   const totalBeds = hospitals.reduce((acc, h) => acc + h.beds.available, 0);
-  const totalIcuBeds = hospitals.reduce((acc, h) => acc + h.icuBeds, 0);
   const totalBedsCapacity = hospitals.reduce((acc, h) => acc + h.beds.total, 0);
   const networkCapacity = totalBedsCapacity > 0 ? Math.round((totalBeds / totalBedsCapacity) * 100) : 0;
 
@@ -99,7 +126,7 @@ export const HospitalManagement = () => {
   return (
     <div className="space-y-8 pb-12">
       {/* Global Resource Summary Section (From Resource Management) */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -113,23 +140,6 @@ export const HospitalManagement = () => {
           </div>
           <p className="text-3xl font-black text-white italic">
             <Counter value={totalBeds} />
-          </p>
-        </motion.div>
-
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="glass-card p-5 border-white/10 shadow-xl group hover:border-rose-500/30 transition-all"
-        >
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/20">
-              <ShieldCheck className="w-4 h-4 text-rose-400" />
-            </div>
-            <p className="text-[10px] text-white/40 uppercase font-black tracking-widest">ICU Units</p>
-          </div>
-          <p className="text-3xl font-black text-rose-400 italic">
-            <Counter value={totalIcuBeds} />
           </p>
         </motion.div>
 
@@ -272,106 +282,283 @@ export const HospitalManagement = () => {
               </div>
             </div>
 
-            {/* Integrated Tactical Monitoring & Control */}
+            {/* Integrated Tactical Monitoring & Control - ONLY FOR HOSPITALS */}
             <div className="space-y-4 relative z-10 mt-auto">
-              <div className="grid grid-cols-3 gap-2">
-                <button 
-                  disabled={h.icuBeds === 0}
-                  onClick={(e) => { e.stopPropagation(); bookResource(h.id, 'icu'); }}
-                  className={cn(
-                    "bg-white/[0.04] p-2 rounded-xl border border-white/5 hover:bg-rose-500/10 transition-all flex flex-col items-center justify-center gap-1 group/btn",
-                    h.icuBeds === 0 && "opacity-30 grayscale cursor-not-allowed"
-                  )}
-                >
-                  <span className="text-[6px] font-black text-rose-500/60 uppercase tracking-widest leading-none">ICU BEDS</span>
-                  <div className="flex items-center gap-1">
-                    <Activity className="w-2.5 h-2.5 text-rose-500" />
-                    <span className="text-[11px] font-black text-white italic">{h.icuBeds}/{h.totalIcuBeds}</span>
-                  </div>
-                </button>
-
-                <button 
-                  disabled={h.beds.available === 0}
-                  onClick={(e) => { e.stopPropagation(); bookResource(h.id, 'bed'); }}
-                  className={cn(
-                    "bg-white/[0.04] p-2 rounded-xl border border-white/5 hover:bg-emerald-500/10 transition-all flex flex-col items-center justify-center gap-1 group/btn",
-                    h.beds.available === 0 && "opacity-30 grayscale cursor-not-allowed"
-                  )}
-                >
-                  <span className="text-[6px] font-black text-emerald-500/60 uppercase tracking-widest leading-none">GENERAL BEDS</span>
-                  <div className="flex items-center gap-1">
-                    <Bed className="w-2.5 h-2.5 text-emerald-500" />
-                    <span className="text-[11px] font-black text-white italic">{h.beds.available}/{h.beds.total}</span>
-                  </div>
-                </button>
-
-                <button 
-                  onClick={(e) => { 
-                    e.stopPropagation(); 
-                    setExpandedAmbId(expandedAmbId === h.id ? null : h.id);
-                    setAmbDestination("");
-                  }}
-                  className="bg-white/[0.04] p-2 rounded-xl border border-white/5 hover:bg-cyan-500/10 transition-all flex flex-col items-center justify-center gap-1"
-                >
-                  <span className="text-[6px] font-black text-cyan-400/60 uppercase tracking-widest leading-none">AMBULANCES</span>
-                  <div className="flex items-center gap-1">
-                    <Truck className="w-2.5 h-2.5 text-cyan-400" />
-                    <span className="text-[11px] font-black text-white italic">{h.ambulances}/{h.totalAmbulances}</span>
-                    <ChevronDown className={cn("w-2 h-2 text-white/20 transition-transform", expandedAmbId === h.id ? "rotate-180" : "rotate-0")} />
-                  </div>
-                </button>
-              </div>
-
-              <AnimatePresence>
-                {expandedAmbId === h.id && (
-                  <motion.div 
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="overflow-hidden relative z-20"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="p-3 bg-[#050a0a] border border-white/10 rounded-2xl space-y-2 mb-2">
-                      <input 
-                        type="text" 
-                        placeholder="Enter Destination"
-                        className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-bold text-white uppercase outline-none focus:border-cyan-500/40 transition-colors"
-                        value={ambDestination}
-                        onChange={(e) => setAmbDestination(e.target.value)}
-                      />
-                      <button 
-                        onClick={() => {
-                          if (!ambDestination) return;
-                          dispatchAmbulance(h.id, [h.lat + 0.01, h.lng + 0.01]);
-                          setExpandedAmbId(null);
-                          setAmbDestination("");
-                        }}
-                        className="w-full py-2 bg-cyan-500 rounded-xl text-[10px] font-black text-white uppercase tracking-widest hover:bg-cyan-400 active:scale-[0.98] transition-all"
-                      >
-                        Request Ambulance
-                      </button>
+              {(h.type === 'Hospital' || h.type === 'Medical Center') ? (
+                <>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div 
+                      className={cn(
+                        "bg-white/[0.04] p-2 rounded-xl border border-white/5 flex flex-col items-center justify-center gap-1",
+                        "opacity-50 grayscale"
+                      )}
+                      title="ICU Admission Controlled by Hospital Triage"
+                    >
+                      <span className="text-[6px] font-black text-rose-500/60 uppercase tracking-widest leading-none">ICU BEDS</span>
+                      <div className="flex items-center gap-1">
+                        <Activity className="w-2.5 h-2.5 text-rose-500" />
+                        <span className="text-[11px] font-black text-white italic">{h.icuBeds}/{h.totalIcuBeds}</span>
+                      </div>
                     </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
 
-              {/* Status Section: Responder Lifecycle Telemetry */}
-              <div className="flex items-center justify-between px-3 py-2.5 bg-white/[0.02] border border-white/5 rounded-2xl relative z-10 group/status-row">
-                <div className="flex flex-col items-center">
-                  <span className="text-[6px] font-bold text-white/30 uppercase tracking-widest mb-0.5">Busy</span>
-                  <span className="text-[11px] font-black italic text-rose-500 tracking-tighter">{h.busyAmbulances}</span>
+                    <button 
+                      disabled={h.beds.available === 0}
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        if (expandedBedId === h.id) {
+                          setExpandedBedId(null);
+                        } else {
+                          setExpandedBedId(h.id);
+                          setExpandedAmbId(null);
+                          setRequesterName("");
+                          setRequesterPhone("");
+                        }
+                      }}
+                      className={cn(
+                        "bg-white/[0.04] p-2 rounded-xl border border-white/5 hover:bg-emerald-500/10 transition-all flex flex-col items-center justify-center gap-1 group/btn",
+                        h.beds.available === 0 && "opacity-30 grayscale cursor-not-allowed",
+                        expandedBedId === h.id && "bg-emerald-500/20 border-emerald-500/40"
+                      )}
+                    >
+                      <span className="text-[6px] font-black text-emerald-500/60 uppercase tracking-widest leading-none">GENERAL BEDS</span>
+                      <div className="flex items-center gap-1">
+                        <Bed className="w-2.5 h-2.5 text-emerald-500" />
+                        <span className="text-[11px] font-black text-white italic">{h.beds.available}/{h.beds.total}</span>
+                        <ChevronDown className={cn("w-2 h-2 text-white/20 transition-transform", expandedBedId === h.id ? "rotate-180" : "rotate-0")} />
+                      </div>
+                    </button>
+
+                    <button 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        setExpandedAmbId(expandedAmbId === h.id ? null : h.id);
+                        setAmbDestination("");
+                      }}
+                      className="bg-white/[0.04] p-2 rounded-xl border border-white/5 hover:bg-cyan-500/10 transition-all flex flex-col items-center justify-center gap-1"
+                    >
+                      <span className="text-[6px] font-black text-cyan-400/60 uppercase tracking-widest leading-none">AMBULANCES</span>
+                      <div className="flex items-center gap-1">
+                        <Truck className="w-2.5 h-2.5 text-cyan-400" />
+                        <span className="text-[11px] font-black text-white italic">{h.ambulances}/{h.totalAmbulances}</span>
+                        <ChevronDown className={cn("w-2 h-2 text-white/20 transition-transform", expandedAmbId === h.id ? "rotate-180" : "rotate-0")} />
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* Forms for Bed/Ambulance booking */}
+                  <AnimatePresence>
+                    {expandedBedId === h.id && (
+                      <motion.div 
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden relative z-20"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="p-4 bg-[#050a0a] border border-emerald-500/20 rounded-2xl space-y-3 mb-2 shadow-2xl">
+                          <div className="flex items-center gap-2 mb-1 px-1">
+                            <Bed className="w-3 h-3 text-emerald-400" />
+                            <span className="text-[8px] font-black text-white uppercase tracking-widest">Bed Reservation Form</span>
+                          </div>
+                          <div className="grid grid-cols-1 gap-2">
+                            {['B-GOVT', 'B-BLDE', 'B-ALAMEEN'].includes(h.id) ? (
+                              <>
+                                <div className="relative">
+                                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-white/20" />
+                                  <input 
+                                    type="text" 
+                                    placeholder="Patient Full Name"
+                                    className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-3 py-2.5 text-[10px] font-bold text-white uppercase outline-none focus:border-emerald-500/40 transition-colors"
+                                    value={requesterName}
+                                    onChange={(e) => setRequesterName(e.target.value)}
+                                  />
+                                </div>
+                                <div className="relative">
+                                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-white/20" />
+                                  <input 
+                                    type="tel" 
+                                    placeholder="Contact Number"
+                                    className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-3 py-2.5 text-[10px] font-bold text-white uppercase outline-none focus:border-emerald-500/40 transition-colors"
+                                    value={requesterPhone}
+                                    onChange={(e) => setRequesterPhone(e.target.value)}
+                                  />
+                                </div>
+                              </>
+                            ) : (
+                              <div className="bg-white/5 rounded-xl p-3 text-center">
+                                <p className="text-[8px] font-black text-white/40 uppercase tracking-widest">Simulation Hospital: Direct Confirmation Allowed</p>
+                              </div>
+                            )}
+                          </div>
+                          <button 
+                            onClick={() => {
+                              const isSynced = ['B-GOVT', 'B-BLDE', 'B-ALAMEEN'].includes(h.id);
+                              if (isSynced && (!requesterName || !requesterPhone)) {
+                                alert("Please provide patient details for database sync.");
+                                return;
+                              }
+                              bookResource(h.id, 'bed', requesterName || 'Sim-Patient', requesterPhone || 'Sim-Phone');
+                              setExpandedBedId(null);
+                              setRequesterName("");
+                              setRequesterPhone("");
+                              setTimeout(loadBookings, 1000);
+                            }}
+                            className="w-full py-3 bg-emerald-500 rounded-xl text-[10px] font-black text-white uppercase tracking-widest hover:bg-emerald-400 active:scale-[0.98] transition-all shadow-lg"
+                          >
+                            Confirm Booking
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <AnimatePresence>
+                    {expandedAmbId === h.id && (
+                      <motion.div 
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden relative z-20"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="p-4 bg-[#050a0a] border border-white/10 rounded-2xl space-y-3 mb-2 shadow-2xl">
+                          <div className="flex items-center gap-2 mb-1 px-1">
+                            <Truck className="w-3 h-3 text-cyan-400" />
+                            <span className="text-[8px] font-black text-white uppercase tracking-widest">Dispatch Request Form</span>
+                          </div>
+                          <div className="grid grid-cols-1 gap-2">
+                            {['B-GOVT', 'B-BLDE', 'B-ALAMEEN'].includes(h.id) && (
+                              <>
+                                <div className="relative">
+                                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-white/20" />
+                                  <input 
+                                    type="text" 
+                                    placeholder="Patient/Requester Name"
+                                    className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-3 py-2.5 text-[10px] font-bold text-white uppercase outline-none focus:border-cyan-500/40 transition-colors"
+                                    value={requesterName}
+                                    onChange={(e) => setRequesterName(e.target.value)}
+                                  />
+                                </div>
+                                <div className="relative">
+                                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-white/20" />
+                                  <input 
+                                    type="tel" 
+                                    placeholder="Contact Number"
+                                    className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-3 py-2.5 text-[10px] font-bold text-white uppercase outline-none focus:border-cyan-500/40 transition-colors"
+                                    value={requesterPhone}
+                                    onChange={(e) => setRequesterPhone(e.target.value)}
+                                  />
+                                </div>
+                              </>
+                            )}
+                            <div className="relative">
+                              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-white/20" />
+                              <input 
+                                type="text" 
+                                placeholder="Pick-up/Destination Address"
+                                className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-3 py-2.5 text-[10px] font-bold text-white uppercase outline-none focus:border-cyan-500/40 transition-colors"
+                                value={ambDestination}
+                                onChange={(e) => setAmbDestination(e.target.value)}
+                              />
+                            </div>
+                          </div>
+                          <button 
+                            onClick={() => {
+                              const isSynced = ['B-GOVT', 'B-BLDE', 'B-ALAMEEN'].includes(h.id);
+                              if (!ambDestination || (isSynced && (!requesterName || !requesterPhone))) {
+                                alert(isSynced ? "Please fill in all details for dispatch." : "Please provide a destination address.");
+                                return;
+                              }
+                              dispatchAmbulance(h.id, [h.lat + 0.01, h.lng + 0.01], requesterName || 'Simulation', requesterPhone || 'Simulated');
+                              setExpandedAmbId(null);
+                              setAmbDestination("");
+                              setRequesterName("");
+                              setRequesterPhone("");
+                              setTimeout(loadBookings, 1000);
+                            }}
+                            className="w-full py-3 bg-cyan-500 rounded-xl text-[10px] font-black text-white uppercase tracking-widest hover:bg-cyan-400 active:scale-[0.98] transition-all shadow-lg"
+                          >
+                            Confirm Dispatch
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Status Section: Responder Lifecycle Telemetry */}
+                  <div className="flex items-center justify-between px-3 py-2.5 bg-white/[0.02] border border-white/5 rounded-2xl relative z-10 group/status-row">
+                    <div className="flex flex-col items-center">
+                      <span className="text-[6px] font-bold text-white/30 uppercase tracking-widest mb-0.5">Busy</span>
+                      <span className="text-[11px] font-black italic text-rose-500 tracking-tighter">{h.busyAmbulances}</span>
+                    </div>
+                    <div className="w-px h-6 bg-white/5" />
+                    <div className="flex flex-col items-center">
+                      <span className="text-[6px] font-bold text-white/30 uppercase tracking-widest mb-0.5">Processing</span>
+                      <span className="text-[11px] font-black italic text-amber-500 tracking-tighter">{h.processingAmbulances}</span>
+                    </div>
+                    <div className="w-px h-6 bg-white/5" />
+                    <div className="flex flex-col items-center">
+                      <span className="text-[6px] font-bold text-white/30 uppercase tracking-widest mb-0.5">Completed</span>
+                      <span className="text-[11px] font-black italic text-emerald-500 tracking-tighter">{h.completedAmbulances}</span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                /* Clinic / Medical Store Detail Card */
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-white/[0.04] p-3 rounded-2xl border border-white/5 flex flex-col gap-1">
+                      <span className="text-[7px] font-black text-cyan-400/60 uppercase tracking-[0.2em] leading-none mb-1">Travel Distance</span>
+                      <div className="flex items-center gap-2">
+                         <MapPin className="w-3 h-3 text-cyan-400" />
+                         <span className="text-[12px] font-black text-white italic tracking-tight">{h.distance?.toFixed(1) || '0.0'} KM</span>
+                      </div>
+                    </div>
+                    <div className="bg-white/[0.04] p-3 rounded-2xl border border-white/5 flex flex-col gap-1">
+                      <span className="text-[7px] font-black text-emerald-400/60 uppercase tracking-[0.2em] leading-none mb-1">Est. Travel Time</span>
+                      <div className="flex items-center gap-2">
+                         <Clock className="w-3 h-3 text-emerald-400" />
+                         <span className="text-[12px] font-black text-white italic tracking-tight">{Math.round((h.distance || 0) * 2.5) || '1'} MIN</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="p-3 bg-white/[0.02] border border-white/5 rounded-2xl flex items-center justify-between">
+                     <div className="flex flex-col">
+                        <span className="text-[7px] font-black text-white/20 uppercase tracking-widest">Facility Focus</span>
+                        <span className="text-[10px] font-black text-white/60 tracking-wider uppercase">{h.type} Service</span>
+                     </div>
+                     <div className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center opacity-40">
+                        {h.type === 'Clinic' ? <Stethoscope className="w-4 h-4 text-cyan-400" /> : <Droplets className="w-4 h-4 text-rose-400" />}
+                     </div>
+                  </div>
                 </div>
-                <div className="w-px h-6 bg-white/5" />
-                <div className="flex flex-col items-center">
-                  <span className="text-[6px] font-bold text-white/30 uppercase tracking-widest mb-0.5">Processing</span>
-                  <span className="text-[11px] font-black italic text-amber-500 tracking-tighter">{h.processingAmbulances}</span>
+              )}
+
+              {/* Facility-Specific Database Records */}
+              {['B-GOVT', 'B-BLDE', 'B-ALAMEEN'].includes(h.id) && (
+                <div className="space-y-2 mt-2 pt-2 border-t border-white/5 relative z-10">
+                   <div className="flex items-center gap-1.5 px-1">
+                     <Clock className="w-2.5 h-2.5 text-white/20" />
+                     <span className="text-[7px] font-black text-white/30 uppercase tracking-widest leading-none">Database Records</span>
+                   </div>
+                   <div className="space-y-1 max-h-[80px] overflow-y-auto custom-scrollbar-mini pr-1">
+                      {recentBookings.filter(b => b.hospital_id === h.id).length === 0 ? (
+                        <p className="text-[7px] font-bold text-white/10 uppercase text-center py-2 italic tracking-widest">Awaiting synced data...</p>
+                      ) : (
+                        recentBookings.filter(b => b.hospital_id === h.id).slice(0, 3).map((b) => (
+                          <div key={b.id} className="bg-white/[0.03] border border-white/5 rounded-lg p-1.5 flex items-center justify-between group/record hover:border-cyan-500/20 transition-colors">
+                            <div className="min-w-0">
+                               <p className="text-[9px] font-black text-white uppercase truncate italic leading-none">{b.patient_name}</p>
+                               <p className="text-[7px] font-black text-cyan-400 italic mt-0.5 leading-none">{b.contact_number}</p>
+                            </div>
+                            <span className="text-[6px] font-bold text-white/20 uppercase whitespace-nowrap">{new Date(b.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          </div>
+                        ))
+                      )}
+                   </div>
                 </div>
-                <div className="w-px h-6 bg-white/5" />
-                <div className="flex flex-col items-center">
-                  <span className="text-[6px] font-bold text-white/30 uppercase tracking-widest mb-0.5">Completed</span>
-                  <span className="text-[11px] font-black italic text-emerald-500 tracking-tighter">{h.completedAmbulances}</span>
-                </div>
-              </div>
+              )}
 
               <div 
                 onClick={() => navigate(`/hospitals/${h.id}`)}
@@ -401,4 +588,4 @@ export const HospitalManagement = () => {
       )}
     </div>
   );
-};
+}
