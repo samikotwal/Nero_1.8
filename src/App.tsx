@@ -35,6 +35,7 @@ import LiveMap from './pages/LiveMap';
 import { Profile } from './pages/Profile';
 import { Reports } from './pages/Reports';
 import { Settings } from './pages/Settings';
+import { BookingSystem } from './pages/BookingSystem';
 
 function AppContent() {
   const { user, loading: authLoading } = useAuth();
@@ -163,6 +164,7 @@ function AppContent() {
                   <Route path="/hospitals/:id" element={<HospitalDetail />} />
                   <Route path="/map" element={<LiveMap />} />
                   <Route path="/reports" element={<Reports />} />
+                  <Route path="/booking" element={<BookingSystem />} />
                   <Route path="/settings" element={<Settings />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>

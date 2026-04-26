@@ -40,6 +40,15 @@ body::before {
   opacity: 0.1;
 }
 
+@keyframes shimmer {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}
+
 @keyframes dash {
   from {
     stroke-dashoffset: 500;
@@ -55,6 +64,24 @@ body::before {
 
 .road-glow {
   filter: drop-shadow(0 0 8px rgba(34, 211, 238, 0.6));
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 8s linear infinite;
+}
+
+@keyframes dash-route {
+  from { stroke-dashoffset: 200; }
+  to { stroke-dashoffset: 0; }
+}
+
+.animate-dash-route {
+  animation: dash-route 1.5s linear infinite;
 }
 
 .animate-dash-fast {

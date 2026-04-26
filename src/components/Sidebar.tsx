@@ -22,10 +22,11 @@ import { motion, AnimatePresence } from 'motion/react';
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
-  { icon: User, label: 'User Profile', path: '/profile' },
-  { icon: Hospital, label: 'Hospital Management', path: '/hospitals' },
+  { icon: Zap, label: 'Booking System', path: '/booking' },
   { icon: MapIcon, label: 'Live Map', path: '/map' },
+  { icon: Hospital, label: 'Hospital Management', path: '/hospitals' },
   { icon: BarChart3, label: 'Reports & Analysis', path: '/reports' },
+  { icon: User, label: 'User Profile', path: '/profile' },
   { icon: Settings, label: 'Settings', path: '/settings' },
 ];
 

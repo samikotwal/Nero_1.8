@@ -42,9 +42,61 @@ import {
   Truck,
   Phone,
   X as CloseIcon,
-  Info as InfoIcon
+  Info as InfoIcon,
+  Timer
 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { ConsoleUnits } from '../components/ConsoleUnits';
+import { 
+  AreaChart, 
+  Area, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip as RechartsTooltip, 
+  ResponsiveContainer 
+} from 'recharts';
+import { Counter } from '../components/Counter';
+import { Skeleton } from '../components/ui/Skeleton';
+
+const springTransition: any = {
+  type: "spring",
+  stiffness: 150,
+  damping: 12,
+  mass: 0.8
+};
+
+const MiniStatCard = ({ title, value, subValue, icon, iconBg, isLoading }: { title: string, value: string | number, subValue?: string, icon: React.ReactNode, iconBg: string, isLoading?: boolean }) => {
+  return (
+    <motion.div
+      whileHover={{ y: -5, scale: 1.02 }}
+      className="bg-white/[0.03] backdrop-blur-xl border border-white/5 rounded-2xl p-6 transition-all"
+    >
+      <div className="flex justify-between items-start">
+        <div className="flex-1 pr-4">
+          <p className="text-[10px] font-black text-white/20 uppercase tracking-[0.2em] mb-1">{title}</p>
+          {isLoading ? (
+            <Skeleton className="w-20 h-9 rounded-lg" />
+          ) : (
+            <h3 className="text-3xl font-black tracking-tighter text-white">
+              <Counter value={value} />
+            </h3>
+          )}
+          {subValue && (
+            isLoading ? (
+              <Skeleton className="w-24 h-3 rounded mt-2" />
+            ) : (
+              <p className="text-[8px] font-bold text-white/10 uppercase tracking-widest mt-1">{subValue}</p>
+            )
+          )}
+        </div>
+        <div className={cn("p-2.5 rounded-xl flex items-center justify-center shrink-0", iconBg)}>
+          {icon}
+        </div>
+      </div>
+    </motion.div>
+  );
+};
 
 // Fix Leaflet marker icons
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -218,7 +270,7 @@ const LiveMap = () => {
     setStatusFilter,
     locationAccuracy,
     emergencies,
-    bookResource
+    refreshData
   } = useSimulation();
   const [selectedHospital, setSelectedHospital] = useState<any>(null);
   const [selectedEmergency, setSelectedEmergency] = useState<any>(null);
@@ -227,13 +279,10 @@ const LiveMap = () => {
   const [ambDestination, setAmbDestination] = useState("");
   const [requesterName, setRequesterName] = useState("");
   const [requesterPhone, setRequesterPhone] = useState("");
-  const [bookingTarget, setBookingTarget] = useState<{hospital: any, type: 'bed' | 'icu'} | null>(null);
   const [ambCount, setAmbCount] = useState(1);
-  const [sidebarBedCount, setSidebarBedCount] = useState<Record<string, number>>({});
-  const [sidebarIcuCount, setSidebarIcuCount] = useState<Record<string, number>>({});
   const [activeDispatchId, setActiveDispatchId] = useState<string | null>(null);
   const hasHandledSelection = useRef(false);
-  const { overviewStats, dispatchAmbulance, responders } = useSimulation();
+  const { overviewStats, dispatchAmbulance, responders, addNotification } = useSimulation();
 
   // Moving Ambulance Marker Component
   const MovingAmbulance = ({ responder }: { responder: any }) => {
@@ -278,21 +327,35 @@ const LiveMap = () => {
       <>
         {routePositions.length > 0 && (
           <>
-            {/* Shiny Glow Polyline */}
+            {/* Ultra-Modern Multi-Layer Route UI */}
             <Polyline 
               positions={routePositions as any} 
-              color="#22d3ee" 
-              weight={10} 
-              opacity={0.15}
-              className="blur-[6px] road-glow"
+              pathOptions={{
+                color: "#22d3ee",
+                weight: 12,
+                opacity: 0.15,
+              }}
+              className="blur-[8px]"
             />
             <Polyline 
               positions={routePositions as any} 
-              color="#06b6d4" 
-              weight={4} 
-              opacity={0.8}
-              dashArray="10, 10"
-              className="animate-dash road-glow"
+              pathOptions={{
+                color: "#06b6d4",
+                weight: 6,
+                opacity: 0.4,
+              }}
+              className="blur-[2px]"
+            />
+            <Polyline 
+              positions={routePositions as any} 
+              pathOptions={{
+                color: "#ffffff",
+                weight: 2,
+                opacity: 0.8,
+                dashArray: "1, 15",
+                lineCap: "round",
+              }}
+              className="animate-dash-fast"
             />
           </>
         )}
@@ -377,7 +440,7 @@ const LiveMap = () => {
         const north = bounds.getNorth();
         const east = bounds.getEast();
         fetchByBounds(south, west, north, east, zoom);
-      }, 400);
+      }, 100);
     };
   }, [fetchByBounds]);
 
@@ -397,16 +460,21 @@ const LiveMap = () => {
       .sort((a, b) => (a.distance || 0) - (b.distance || 0));
   }, [hospitals, searchQuery, filterType, statusFilter]);
 
-  // Filter for the list: strictly nearby (10km) sector lock for Live Map view
+  const [visibleNearbyCount, setVisibleNearbyCount] = useState(8);
+
+  // Filter for the list: Sector coverage for Live Map view
   const nearbyFacilities = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
     if (query) {
-      // If searching, show everything that matched the search query
       return sortedHospitals;
     }
-    // If not searching, show strictly nearby (10km) for a tight sector lock
-    return sortedHospitals.filter(h => (h.distance || 0) <= 10);
-  }, [sortedHospitals, searchQuery]);
+    // Prioritize proximity but ensure we show at least some facilities
+    return sortedHospitals.slice(0, Math.max(8, visibleNearbyCount));
+  }, [sortedHospitals, searchQuery, visibleNearbyCount]);
+
+  const handleLoadMoreNearby = () => {
+    setVisibleNearbyCount(prev => prev + 8);
+  };
 
   const sortedHospitalsWithoutSelected = useMemo(() => {
     return sortedHospitals.filter(h => h.id !== selectedHospital?.id);
@@ -657,9 +725,28 @@ const LiveMap = () => {
         )}>
         {followUser && (
           <div className="absolute inset-0 pointer-events-none border-[20px] border-cyan-500/5 z-[1000] rounded-[1.5rem]">
-            <div className="absolute top-4 left-4 px-3 py-1 rounded-full bg-cyan-500 text-white text-[8px] font-black uppercase tracking-widest animate-pulse flex items-center gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-white animate-ping"></div>
-              Focus Lock Active
+            <div className="absolute top-4 left-4 flex flex-col gap-2">
+              <div className="px-3 py-1 rounded-full bg-cyan-500 text-white text-[8px] font-black uppercase tracking-widest animate-pulse flex items-center gap-2 w-fit">
+                <div className="w-1.5 h-1.5 rounded-full bg-white animate-ping"></div>
+                Focus Lock Active
+              </div>
+              
+              {locationAccuracy !== null && (
+                <div className={cn(
+                  "px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest flex items-center gap-2 w-fit backdrop-blur-md border",
+                  locationAccuracy > 15 
+                    ? "bg-rose-500/80 text-white border-rose-400/50 animate-pulse shadow-[0_0_15px_rgba(244,63,94,0.5)]" 
+                    : "bg-emerald-500/20 text-emerald-400 border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+                )}>
+                  <LocateFixed className={cn("w-3 h-3", locationAccuracy > 15 ? "animate-spin-slow" : "")} />
+                  <span className="flex items-center gap-1.5">
+                    GPS Precision: <span className="text-white font-black">{locationAccuracy.toFixed(1)}m</span>
+                  </span>
+                  {locationAccuracy > 15 && (
+                    <span className="ml-1 text-[7px] font-black text-white/90 underline decoration-white/20 underline-offset-2">CAUTION</span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -695,6 +782,49 @@ const LiveMap = () => {
             selectedHospitalCoords={memoizedSelectedHospitalCoords}
             isExpanded={isExpanded}
           />
+
+          {/* Strategic Planner Route Polyline */}
+          {route && route.length > 0 && (
+            <>
+              <Polyline 
+                positions={route} 
+                pathOptions={{
+                  color: "#06b6d4",
+                  weight: 12,
+                  opacity: 0.15,
+                }}
+                className="blur-[10px]"
+              />
+              <Polyline 
+                positions={route} 
+                pathOptions={{
+                  color: "#22d3ee",
+                  weight: 6,
+                  opacity: 0.4,
+                }}
+                className="blur-[2px]"
+              />
+              <Polyline 
+                positions={route} 
+                pathOptions={{
+                  color: "#ffffff",
+                  weight: 3,
+                  opacity: 1,
+                  dashArray: "10, 25",
+                  lineCap: "round",
+                }}
+                className="animate-dash-route"
+              />
+              <Polyline 
+                positions={route} 
+                pathOptions={{
+                  color: "#22d3ee",
+                  weight: 1,
+                  opacity: 0.3,
+                }}
+              />
+            </>
+          )}
 
           {/* Planner Result Markers */}
           {plannerResult && (
@@ -785,6 +915,7 @@ const LiveMap = () => {
                 icon={hospitalIcon(h.type, h.status, false)}
                 eventHandlers={{
                   click: () => handleHospitalSelect(h),
+                  dblclick: () => navigate(`/hospitals/${h.id}`)
                 }}
               >
                 <Popup className="custom-popup" minWidth={300}>
@@ -806,7 +937,24 @@ const LiveMap = () => {
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-[8px] font-black text-cyan-400/60 uppercase tracking-widest">{(h as any).country || 'INDIA'}</span>
                         </div>
-                        <h3 className="font-black text-sm tracking-tight leading-tight uppercase italic text-white">{h.name}</h3>
+                        <div className="flex justify-between items-center mb-1">
+                          <h3 className="font-black text-sm tracking-tight leading-tight uppercase italic text-white truncate pr-2">{h.name}</h3>
+                          {h.type === 'Hospital' && (
+                            <div className="flex flex-col items-end shrink-0">
+                              <span className="text-[7px] font-black text-cyan-400/60 uppercase mb-0.5 tracking-tighter">Capacity</span>
+                              <div className="w-12 h-1 bg-white/10 rounded-full overflow-hidden">
+                                <div 
+                                  className={cn(
+                                    "h-full rounded-full transition-all duration-1000",
+                                    (typeof h.beds === 'object' ? h.beds.available / h.beds.total : h.beds / 400) > 0.5 ? 'bg-emerald-500' : 
+                                    (typeof h.beds === 'object' ? h.beds.available / h.beds.total : h.beds / 400) > 0.2 ? 'bg-amber-500' : 'bg-rose-500'
+                                  )}
+                                  style={{ width: `${Math.min(100, (typeof h.beds === 'object' ? h.beds.available / h.beds.total : h.beds / 400) * 100)}%` }}
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
                         <div className="flex items-center gap-1.5 opacity-40">
                           <MapPin className="w-3 h-3 text-cyan-400" />
                           <p className="text-[8px] font-bold uppercase truncate">{h.address}</p>
@@ -836,25 +984,41 @@ const LiveMap = () => {
                         </div>
                       )}
 
-                      <div className="flex gap-2">
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/hospitals/${h.id}`);
-                          }}
-                          className="flex-1 py-3 rounded-2xl bg-white/5 border border-white/10 text-white text-[9px] font-black uppercase tracking-[0.2em] hover:bg-white/10 transition-all flex items-center justify-center gap-2"
-                        >
-                          Tactical Profile
-                        </button>
+                      <div className="flex flex-col gap-2">
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/hospitals/${h.id}`);
+                            }}
+                            className="flex-1 py-3 rounded-2xl bg-white/5 border border-white/10 text-white text-[9px] font-black uppercase tracking-[0.2em] hover:bg-white/10 transition-all flex items-center justify-center gap-2"
+                          >
+                            Intel
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                               e.stopPropagation();
+                               setDestQuery(h.name);
+                               handlePlanRoute();
+                            }}
+                            className="flex-1 py-3 rounded-2xl bg-white/10 border border-white/20 text-white text-[9px] font-black uppercase tracking-[0.2em] hover:bg-white/20 transition-all flex items-center justify-center gap-2"
+                          >
+                            Route
+                          </button>
+                        </div>
                         <button 
                           onClick={(e) => {
                              e.stopPropagation();
-                             setDestQuery(h.name);
-                             handlePlanRoute();
+                             if (h.ambulances > 0) {
+                               dispatchAmbulance(h.id, userLocation || [h.lat + 0.01, h.lng + 0.01], 'Field Request', 'Manual');
+                               addNotification("Tactical Dispatch", `Ambulance dispatched from ${h.name}`, "info");
+                             } else {
+                               alert("No ambulances available at this node.");
+                             }
                           }}
-                          className="flex-1 py-3 rounded-2xl bg-cyan-500 text-white text-[9px] font-black uppercase tracking-[0.2em] hover:bg-cyan-400 transition-all shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2"
+                          className="w-full py-4 rounded-2xl bg-cyan-500 text-white text-[9px] font-black uppercase tracking-[0.3em] hover:bg-cyan-400 transition-all shadow-lg shadow-cyan-500/30 flex items-center justify-center gap-2"
                         >
-                          Route
+                          Quick Dispatch
                         </button>
                       </div>
                     </div>
@@ -871,6 +1035,9 @@ const LiveMap = () => {
               position={[selectedHospital.lat, selectedHospital.lng]} 
               icon={hospitalIcon(selectedHospital.type, selectedHospital.status, true)}
               zIndexOffset={1000}
+              eventHandlers={{
+                dblclick: () => navigate(`/hospitals/${selectedHospital.id}`)
+              }}
             >
               <Popup className="custom-popup" minWidth={300}>
                 <div className="p-0 overflow-hidden rounded-[2rem] bg-[#090f0f] border border-white/10 shadow-3xl">
@@ -891,7 +1058,24 @@ const LiveMap = () => {
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-[8px] font-black text-cyan-400/60 uppercase tracking-widest">{selectedHospital.country || 'INDIA'}</span>
                       </div>
-                      <h3 className="font-black text-sm tracking-tight leading-tight uppercase italic text-white">{selectedHospital.name}</h3>
+                      <div className="flex justify-between items-center mb-1">
+                        <h3 className="font-black text-sm tracking-tight leading-tight uppercase italic text-white truncate pr-2">{selectedHospital.name}</h3>
+                        {selectedHospital.type === 'Hospital' && (
+                          <div className="flex flex-col items-end shrink-0">
+                            <span className="text-[7px] font-black text-cyan-400/60 uppercase mb-0.5 tracking-tighter">Capacity</span>
+                            <div className="w-12 h-1 bg-white/10 rounded-full overflow-hidden">
+                              <div 
+                                className={cn(
+                                  "h-full rounded-full transition-all duration-1000",
+                                  (typeof selectedHospital.beds === 'object' ? selectedHospital.beds.available / selectedHospital.beds.total : selectedHospital.beds / 400) > 0.5 ? 'bg-emerald-500' : 
+                                  (typeof selectedHospital.beds === 'object' ? selectedHospital.beds.available / selectedHospital.beds.total : selectedHospital.beds / 400) > 0.2 ? 'bg-amber-500' : 'bg-rose-500'
+                                )}
+                                style={{ width: `${Math.min(100, (typeof selectedHospital.beds === 'object' ? selectedHospital.beds.available / selectedHospital.beds.total : selectedHospital.beds / 400) * 100)}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
                       <div className="flex items-center gap-1.5 opacity-40">
                         <MapPin className="w-3 h-3 text-cyan-400" />
                         <p className="text-[8px] font-bold uppercase truncate">{selectedHospital.address}</p>
@@ -921,25 +1105,42 @@ const LiveMap = () => {
                       </div>
                     )}
 
-                    <div className="flex gap-2">
-                       <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/hospitals/${selectedHospital.id}`);
-                        }}
-                        className="flex-1 py-3 rounded-2xl bg-white/5 border border-white/10 text-white text-[9px] font-black uppercase tracking-[0.2em] hover:bg-white/10 transition-all flex items-center justify-center gap-2"
-                      >
-                        Tactical Profile
-                      </button>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/hospitals/${selectedHospital.id}`);
+                          }}
+                          className="flex-1 py-3 rounded-2xl bg-white/5 border border-white/10 text-white text-[9px] font-black uppercase tracking-[0.2em] hover:bg-white/10 transition-all flex items-center justify-center gap-2"
+                        >
+                          Intel
+                        </button>
+                        <button 
+                          onClick={(e) => {
+                             e.stopPropagation();
+                             setDestQuery(selectedHospital.name);
+                             handlePlanRoute();
+                          }}
+                          className="flex-1 py-3 rounded-2xl bg-white/10 border border-white/20 text-white text-[9px] font-black uppercase tracking-[0.2em] hover:bg-white/20 transition-all flex items-center justify-center gap-2"
+                        >
+                          Route
+                        </button>
+                      </div>
                       <button 
                         onClick={(e) => {
                            e.stopPropagation();
-                           setDestQuery(selectedHospital.name);
-                           handlePlanRoute();
+                           if (selectedHospital.ambulances > 0) {
+                             const destAddress = userLocation ? `LAT: ${userLocation[0].toFixed(4)}, LNG: ${userLocation[1].toFixed(4)}` : 'Field Sector Alpha';
+                             dispatchAmbulance(selectedHospital.id, userLocation || [selectedHospital.lat + 0.01, selectedHospital.lng + 0.01], 'Field Request', 'Manual', 1, destAddress);
+                             addNotification("Tactical Dispatch", `Ambulance dispatched from ${selectedHospital.name}`, "info");
+                           } else {
+                             alert("No ambulances available at this node.");
+                           }
                         }}
-                        className="flex-1 py-3 rounded-2xl bg-cyan-500 text-white text-[9px] font-black uppercase tracking-[0.2em] hover:bg-cyan-400 transition-all shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2"
+                        className="w-full py-4 rounded-2xl bg-cyan-500 text-white text-[9px] font-black uppercase tracking-[0.3em] hover:bg-cyan-400 transition-all shadow-lg shadow-cyan-500/30 flex items-center justify-center gap-2"
                       >
-                        Route
+                        Quick Dispatch
                       </button>
                     </div>
                   </div>
@@ -1041,16 +1242,30 @@ const LiveMap = () => {
                       </button>
                     </div>
                     
-                    <button 
-                      onClick={() => setPlannerResult(null)}
-                      className="w-full py-3 px-4 rounded-2xl bg-cyan-500 text-white text-[9px] font-black uppercase tracking-[0.2em] shadow-[0_4px_20px_rgba(6,182,212,0.3)] hover:bg-cyan-400 transition-all uppercase"
-                    >
-                      Release Mission
-                    </button>
+                      <button 
+                        onClick={() => {
+                          const hospital = hospitals.find(h => 
+                            h.name.toLowerCase().includes(plannerResult?.destMetadata?.name?.toLowerCase() || '') ||
+                            h.id === plannerResult?.destMetadata?.id
+                          );
+                          if (hospital && hospital.ambulances > 0) {
+                             dispatchAmbulance(hospital.id, plannerResult.dest, 'Strategic Mission', 'System-Auth', 1, destQuery || plannerResult.destMetadata.address);
+                             addNotification("Strategic Dispatch", `Mission authorized to ${plannerResult.destMetadata.name}`, "success");
+                             setPlannerResult(null);
+                             setRoute([]);
+                          } else {
+                             alert("Resource constraints or invalid target Node.");
+                          }
+                        }}
+                        className="w-full py-4 rounded-2xl bg-cyan-500 text-white text-[9px] font-black uppercase tracking-[0.3em] hover:bg-cyan-400 transition-all shadow-[0_4px_20px_rgba(6,182,212,0.3)] flex items-center justify-center gap-2"
+                      >
+                        <Zap className="w-4 h-4 fill-current" />
+                        Engage Tactical Unit
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </motion.div>
+              </motion.div>
           )}
         </AnimatePresence>
 
@@ -1069,6 +1284,205 @@ const LiveMap = () => {
             <Layers className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Dashboard Stats Under Map */}
+        <div className="mx-4 lg:mx-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 mt-12">
+            <MiniStatCard 
+              title="Ambulances In Service" 
+              value={responders.length} 
+              subValue="Operational Nodes"
+              icon={<Truck className="w-5 h-5 text-cyan-400" />} 
+              iconBg="bg-cyan-500/10"
+              isLoading={isLoading}
+            />
+            <MiniStatCard 
+              title="Active Emergencies" 
+              value={emergencies.filter(e => e.status !== 'COMPLETED').length} 
+              subValue="Critical Dispatch"
+              icon={<AlertTriangle className="w-5 h-5 text-amber-500" />} 
+              iconBg="bg-amber-500/10"
+              isLoading={isLoading}
+            />
+            <MiniStatCard 
+              title="Completed Today" 
+              value={overviewStats.completedToday} 
+              subValue="+15% Increase"
+              icon={<CheckCircle2 className="w-5 h-5 text-emerald-500" />} 
+              iconBg="bg-emerald-500/10"
+              isLoading={isLoading}
+            />
+            <MiniStatCard 
+              title="Avg Response Time" 
+              value="8.2 min" 
+              subValue="Target: 8.0 min"
+              icon={<Timer className="w-5 h-5 text-rose-500" />} 
+              iconBg="bg-rose-500/10"
+              isLoading={isLoading}
+            />
+          </div>
+        </div>
+
+        {/* Hospitals Near User Section - Enhanced */}
+        <div className="mx-4 lg:mx-8 mt-12 overflow-hidden pb-12">
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-cyan-500/10 rounded-xl flex items-center justify-center border border-cyan-500/20 shadow-[0_0_20px_rgba(6,182,212,0.1)]">
+                  <HospitalIcon className="w-5 h-5 text-cyan-400" />
+                </div>
+                <h3 className="text-2xl font-black text-white uppercase italic tracking-tight">Facilities Near Your Sector</h3>
+              </div>
+              <p className="text-[10px] font-black text-white/30 uppercase tracking-[.4em] ml-13">Strategic proximity analysis active</p>
+            </div>
+            
+            {!searchQuery && sortedHospitals.length > visibleNearbyCount && (
+              <button 
+                onClick={handleLoadMoreNearby}
+                className="px-6 py-3 rounded-xl bg-white/5 border border-white/10 text-white text-[10px] font-black uppercase tracking-widest hover:bg-white/10 hover:border-cyan-500/30 transition-all flex items-center gap-2"
+              >
+                <span>Full City View</span>
+                <ChevronRight className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {isLoading && hospitals.length === 0 ? (
+              Array.from({ length: 4 }).map((_, i) => (
+                <div key={`skeleton-${i}`} className="bg-[#0d1414]/90 backdrop-blur-xl border border-white/5 rounded-3xl p-6 h-[280px] flex flex-col gap-4 opacity-50">
+                  <div className="flex justify-between">
+                    <Skeleton className="w-12 h-5 rounded-full" />
+                    <div className="flex gap-2">
+                       <Skeleton className="w-3 h-3 rounded-full" />
+                       <Skeleton className="w-10 h-3 rounded" />
+                    </div>
+                  </div>
+                  <div className="space-y-3 mt-4">
+                    <Skeleton className="w-3/4 h-6 rounded" />
+                    <Skeleton className="w-1/2 h-3 rounded" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 mt-auto">
+                    <Skeleton className="h-12 rounded-2xl" />
+                    <Skeleton className="h-12 rounded-2xl" />
+                  </div>
+                  <Skeleton className="w-full h-10 rounded-2xl" />
+                </div>
+              ))
+            ) : nearbyFacilities.length > 0 ? (
+              nearbyFacilities.map((h, i) => (
+                <motion.div 
+                  key={h.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  whileHover={{ y: -5, scale: 1.01 }}
+                  onClick={() => handleHospitalSelect(h)}
+                  className={cn(
+                    "bg-[#0d1414]/90 backdrop-blur-xl border rounded-3xl p-6 cursor-pointer transition-all relative group overflow-hidden",
+                    selectedHospital?.id === h.id ? "border-cyan-500 shadow-[0_0_30px_rgba(6,182,212,0.3)] z-10" : "border-white/5 hover:border-cyan-500/30"
+                  )}
+                >
+                  <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-100 transition-opacity">
+                    <HospitalIcon className="w-16 h-16 text-cyan-400" />
+                  </div>
+  
+                  <div className="flex flex-col gap-4 relative z-10">
+                    {/* Active Mission ETA Alert */}
+                    {(() => {
+                      const activeResponders = responders.filter(r => r.hospitalId === h.id && r.status === 'EN_ROUTE');
+                      if (activeResponders.length > 0) {
+                        const minEta = Math.min(...activeResponders.map(r => r.eta || 0));
+                        return (
+                          <div className="absolute -top-12 left-0 right-0 flex justify-center">
+                            <motion.div 
+                              initial={{ opacity: 0, scale: 0.8, y: 10 }}
+                              animate={{ opacity: 1, scale: 1, y: 0 }}
+                              className="px-3 py-1 bg-cyan-500 rounded-full shadow-[0_0_20px_rgba(6,182,212,0.5)] border border-cyan-400 flex items-center gap-2"
+                            >
+                              <div className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                              <span className="text-[8px] font-black text-white uppercase tracking-tighter italic">Mission Active: {minEta}m arrival</span>
+                            </motion.div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+
+                    <div className="flex items-center justify-between">
+                      <div className={cn(
+                        "px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border",
+                        h.status === 'available' ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" : 
+                        h.status === 'busy' ? "bg-amber-500/20 text-amber-400 border-amber-500/30" : 
+                        "bg-rose-500/20 text-rose-400 border-rose-500/30"
+                      )}>
+                        {h.status}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-cyan-400" />
+                        <span className="text-[10px] font-black text-cyan-400 italic">
+                          {h.distance ? (h.distance / 1000).toFixed(1) : "0.0"} KM
+                        </span>
+                      </div>
+                    </div>
+  
+                    <div className="h-12 flex flex-col justify-center">
+                      <h4 className="text-base font-black text-white uppercase italic leading-tight group-hover:text-cyan-400 transition-colors truncate">{h.name}</h4>
+                      <p className="text-[9px] font-bold text-white/30 uppercase tracking-widest mt-1 line-clamp-1">{h.address}</p>
+                    </div>
+  
+                    <div className="grid grid-cols-2 gap-3 mt-2">
+                      <div className="bg-white/5 p-3 rounded-2xl flex flex-col items-center gap-1 border border-white/5">
+                        <span className="text-[7px] font-black text-white/30 uppercase tracking-widest leading-none">Beds Ready</span>
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <Bed className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-sm font-black text-white italic">
+                            {typeof h.beds === 'object' ? h.beds.available : h.beds}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="bg-white/5 p-3 rounded-2xl flex flex-col items-center gap-1 border border-white/5">
+                        <span className="text-[7px] font-black text-white/30 uppercase tracking-widest leading-none">Dispatcher</span>
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <Truck className="w-3.5 h-3.5 text-cyan-400" />
+                          <span className="text-sm font-black text-white italic">
+                            {h.totalAmbulances || h.ambulances}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+  
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // Special: If we are in the list view, we want to fly to it and show info
+                        handleHospitalSelect(h);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="w-full bg-cyan-500 py-3 rounded-2xl text-[10px] font-black text-white uppercase tracking-[0.2em] hover:bg-cyan-400 transition-all shadow-lg shadow-cyan-500/20 active:scale-95"
+                    >
+                      Operational Focus
+                    </button>
+                  </div>
+                </motion.div>
+              ))
+            ) : (
+              <div className="col-span-full py-20 flex flex-col items-center justify-center bg-white/[0.02] border border-white/5 rounded-3xl">
+                <HospitalIcon className="w-12 h-12 text-white/10 mb-4" />
+                <p className="text-xs font-black text-white/20 uppercase tracking-[0.3em]">No nearby facilities detected in this sector</p>
+                <button 
+                  onClick={() => refreshData()}
+                  className="mt-6 px-4 py-2 bg-cyan-500/20 border border-cyan-500/30 text-cyan-400 text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-cyan-500/30 transition-all"
+                >
+                  Refresh Tactical Scan
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Console Units UI from Image */}
+        <ConsoleUnits />
       </div>
     </div>
   </div>

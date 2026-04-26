@@ -46,8 +46,8 @@ export const Header = ({ toggleSidebar }: { toggleSidebar: () => void }) => {
           </div>
   
           {isSearchablePage && (
-            <div className="hidden xl:flex items-center gap-4 ml-4">
-              <div className="relative group">
+            <div className="hidden lg:flex items-center gap-4 ml-4 overflow-x-auto no-scrollbar max-w-[500px]">
+              <div className="relative group shrink-0 hidden xl:block">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20 group-focus-within:text-cyan-400 transition-colors" />
                 <input 
                   type="text" 
@@ -81,6 +81,10 @@ export const Header = ({ toggleSidebar }: { toggleSidebar: () => void }) => {
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
+            onClick={() => {
+               // Use internal simulation helper or dispatch custom event
+               window.dispatchEvent(new CustomEvent('triggerRandomEmergency'));
+            }}
             className="hidden md:flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-500/10 text-rose-500 border border-rose-500/20 hover:bg-rose-500/20 transition-all text-[10px] font-black uppercase tracking-widest"
           >
             <Zap className="w-4 h-4 fill-current" />

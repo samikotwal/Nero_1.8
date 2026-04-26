@@ -48,16 +48,47 @@ import { AnimatePresence } from 'motion/react';
 export const HospitalDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { hospitals, userLocation, bookResource, dispatchAmbulance } = useSimulation();
+  const { hospitals, userLocation, dispatchAmbulance, bookResource, requestAdmission } = useSimulation();
   
   const [roadDistance, setRoadDistance] = useState<number | null>(null);
   const [ambDestination, setAmbDestination] = useState("");
-  const [requesterName, setRequesterName] = useState("");
-  const [requesterPhone, setRequesterPhone] = useState("");
-  const [unitCount, setUnitCount] = useState(1);
+  
   const [bedBookingCount, setBedBookingCount] = useState(1);
-  const [icuBookingCount, setIcuBookingCount] = useState(1);
+  const [bedRequesters, setBedRequesters] = useState([{ name: "", phone: "", age: "25", emergency: "" }]);
+  
+  const [unitCount, setUnitCount] = useState(1);
+  const [ambRequesters, setAmbRequesters] = useState([{ name: "", phone: "", emergency: "" }]);
+  
   const [activeDispatch, setActiveDispatch] = useState(false);
+
+  // Sync requesters array with quantity
+  useEffect(() => {
+    setBedRequesters(prev => {
+      const next = [...prev];
+      if (next.length < bedBookingCount) {
+        for (let i = next.length; i < bedBookingCount; i++) {
+          next.push({ name: "", phone: "", age: "25", emergency: "" });
+        }
+      } else {
+        return next.slice(0, bedBookingCount);
+      }
+      return next;
+    });
+  }, [bedBookingCount]);
+
+  useEffect(() => {
+    setAmbRequesters(prev => {
+      const next = [...prev];
+      if (next.length < unitCount) {
+        for (let i = next.length; i < unitCount; i++) {
+          next.push({ name: "", phone: "", emergency: "" });
+        }
+      } else {
+        return next.slice(0, unitCount);
+      }
+      return next;
+    });
+  }, [unitCount]);
 
   // Generate simulated chart data for resource usage over 24h
   const chartData = useMemo(() => {
@@ -68,7 +99,7 @@ export const HospitalDetail = () => {
     }));
   }, [id]);
 
-  const hospital = hospitals.find(h => h.id === id);
+  const hospital = hospitals.find(h => String(h.id) === id);
 
   useEffect(() => {
     if (userLocation) {
@@ -221,286 +252,382 @@ export const HospitalDetail = () => {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-3 gap-12 mt-12">
-        <div className="lg:col-span-2 space-y-12">
-          {/* Transit Estimates */}
-          <section className="space-y-6">
-            <div className="flex items-center gap-3">
-              <Navigation className="w-6 h-6 text-cyan-400" />
-              <h2 className="text-2xl font-black tracking-tight uppercase">Travel Estimates</h2>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-              {[
-                { icon: Car, label: 'Drive', speed: 40 },
-                { icon: Bike, label: 'Cycle', speed: 15 },
-                { icon: Footprints, label: 'Walk', speed: 5 },
-                { icon: Wind, label: 'Run', speed: 10 },
-                { icon: Bus, label: 'Bus', speed: 20 },
-                { icon: TrainFront, label: 'Train', disabled: true },
-                { icon: Plane, label: 'Air', disabled: true }
-              ].map((mode, idx) => {
-                const effectiveDistance = roadDistance || hospital.distance || 0;
-                const timeStr = mode.speed ? Math.round((effectiveDistance / mode.speed) * 60) + 'm' : 'N/A';
-                return (
-                  <div key={idx} className={cn(
-                    "bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col items-center justify-center text-center transition-all hover:border-cyan-500/30",
-                    mode.disabled && "opacity-20 grayscale border-dashed"
-                  )}>
-                    <mode.icon className={cn("w-6 h-6 mb-2", mode.disabled ? "text-white/40" : "text-cyan-400")} />
-                    <span className="text-[10px] font-black uppercase text-white/40 tracking-widest leading-none mb-1">{mode.label}</span>
-                    <div className="flex flex-col">
-                      <span className={cn("text-lg font-black italic", mode.disabled ? "text-white/20" : "text-white")}>{mode.disabled ? 'N/A' : timeStr}</span>
-                      {!mode.disabled && (
-                        <span className="text-[8px] font-bold text-cyan-400/60 uppercase tracking-tighter mt-1 whitespace-nowrap">
-                          {formatDistance(roadDistance || hospital.distance || null)}
-                        </span>
-                      )}
-                    </div>
+      <div className="max-w-7xl mx-auto px-6 mt-12 space-y-12">
+        {/* Transit Estimates */}
+        <section className="space-y-6">
+          <div className="flex items-center gap-3">
+            <Navigation className="w-6 h-6 text-cyan-400" />
+            <h2 className="text-2xl font-black tracking-tight uppercase">Travel Estimates</h2>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+            {[
+              { icon: Car, label: 'Drive', speed: 40 },
+              { icon: Bike, label: 'Cycle', speed: 15 },
+              { icon: Footprints, label: 'Walk', speed: 5 },
+              { icon: Wind, label: 'Run', speed: 10 },
+              { icon: Bus, label: 'Bus', speed: 20 },
+              { icon: TrainFront, label: 'Train', disabled: true },
+              { icon: Plane, label: 'Air', disabled: true }
+            ].map((mode, idx) => {
+              const effectiveDistance = roadDistance || hospital.distance || 0;
+              const timeStr = mode.speed ? Math.round((effectiveDistance / mode.speed) * 60) + 'm' : 'N/A';
+              return (
+                <div key={idx} className={cn(
+                  "bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col items-center justify-center text-center transition-all hover:border-cyan-500/30",
+                  mode.disabled && "opacity-20 grayscale border-dashed"
+                )}>
+                  <mode.icon className={cn("w-6 h-6 mb-2", mode.disabled ? "text-white/40" : "text-cyan-400")} />
+                  <span className="text-[10px] font-black uppercase text-white/40 tracking-widest leading-none mb-1">{mode.label}</span>
+                  <div className="flex flex-col">
+                    <span className={cn("text-lg font-black italic", mode.disabled ? "text-white/20" : "text-white")}>{mode.disabled ? 'N/A' : timeStr}</span>
+                    {!mode.disabled && (
+                      <span className="text-[8px] font-bold text-cyan-400/60 uppercase tracking-tighter mt-1 whitespace-nowrap">
+                        {formatDistance(roadDistance || hospital.distance || null)}
+                      </span>
+                    )}
                   </div>
-                );
-              })}
-            </div>
-          </section>
-
-          {/* Synopsis */}
-          <section className="space-y-6">
-            <div className="flex items-center gap-3">
-              <Info className="w-6 h-6 text-cyan-400" />
-              <h2 className="text-2xl font-black tracking-tight uppercase">Synopsis</h2>
-            </div>
-            <div className="bg-white/5 border border-white/10 rounded-3xl p-8">
-              <p className="text-white/60 leading-relaxed text-lg font-medium">
-                {hospital.name} stands as a beacon of medical excellence in the heart of the city. As a premier {hospital.type.toLowerCase()}, it offers a comprehensive range of healthcare services, from advanced emergency trauma care to specialized surgical procedures.
-                <br /><br />
-                Equipped with the latest diagnostic technologies and staffed by world-class medical professionals, the facility is designed to provide patient-centric care in a modern, healing environment.
-              </p>
-            </div>
-          </section>
-
-          {/* Travel Intel for non-hospitals */}
-          {hospital.type !== 'Hospital' && hospital.type !== 'Medical Center' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <section className="bg-[#090f0f] border border-white/5 rounded-[3rem] p-8 shadow-2xl relative overflow-hidden">
-                <div className="flex items-center gap-4 mb-6 relative z-10">
-                  <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-400/20 flex items-center justify-center">
-                    <MapPin className="w-6 h-6 text-cyan-400" />
+                </div>
+              );
+            })}
+          </div>
+        </section>        {/* Tactical Command Control Center - FULL WIDTH & COMPACT */}
+        {(hospital.type === 'Hospital' || hospital.type === 'Medical Center') && (
+          <div className="flex flex-col gap-6">
+            {/* Command Terminal (Beds Only) */}
+            <section className="bg-[#091414] border border-cyan-500/20 rounded-3xl p-6 shadow-2xl relative overflow-hidden flex flex-col">
+              <div className="absolute top-0 right-0 p-6 opacity-5">
+                 <ShieldCheck className="w-32 h-32 text-cyan-400" />
+              </div>
+              <div className="relative z-10">
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-400/20 flex items-center justify-center text-emerald-400">
+                    <Bed className="w-6 h-6" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-black tracking-tight uppercase italic leading-none">Distance Intel</h2>
-                    <p className="text-[9px] font-black text-white/30 uppercase tracking-[0.3em] mt-1">Geospatial Awareness</p>
+                    <h2 className="text-2xl font-black tracking-tight leading-none">Command Terminal</h2>
+                    <p className="text-[9px] font-black text-white/30 uppercase tracking-[0.4em] mt-1">Bed Resource Management</p>
                   </div>
                 </div>
-                <div className="bg-white/[0.03] border border-white/5 rounded-[2.5rem] p-8">
-                  <p className="text-4xl font-black text-white italic leading-none">{hospital.distance ? hospital.distance.toFixed(1) : '?'}<span className="text-xs uppercase ml-2 text-white/20">KM</span></p>
-                  <p className="text-[9px] font-black text-cyan-400/40 uppercase tracking-[0.3em] mt-3 italic leading-none">Direct Sector Proximity</p>
-                </div>
-              </section>
-
-              <section className="bg-[#090f0f] border border-white/5 rounded-[3rem] p-8 shadow-2xl relative overflow-hidden">
-                <div className="flex items-center gap-4 mb-6 relative z-10">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-400/20 flex items-center justify-center">
-                    < Zap className="w-6 h-6 text-emerald-400" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-black tracking-tight uppercase italic leading-none">Est. Time</h2>
-                    <p className="text-[9px] font-black text-white/30 uppercase tracking-[0.3em] mt-1">Arrival Velocity</p>
-                  </div>
-                </div>
-                <div className="bg-white/[0.03] border border-white/5 rounded-[2.5rem] p-8">
-                  <p className="text-4xl font-black text-white italic leading-none">{hospital.distance ? Math.round(hospital.distance * 2.5) : '?'}<span className="text-xs uppercase ml-2 text-white/20">MIN</span></p>
-                  <p className="text-[9px] font-black text-emerald-400/40 uppercase tracking-[0.3em] mt-3 italic leading-none">Optimal Traffic Conditions</p>
-                </div>
-              </section>
-            </div>
-          )}
-
-          {/* Tactical Command Control Center - Side by Side Grid - ONLY FOR HOSPITALS */}
-          {(hospital.type === 'Hospital' || hospital.type === 'Medical Center') && (
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-              <section className="bg-[#090f0f] border border-white/5 rounded-[3rem] p-8 shadow-2xl relative overflow-hidden flex flex-col h-full">
-               <div className="absolute top-0 right-0 p-8 opacity-5">
-                  <ShieldCheck className="w-32 h-32 text-cyan-400" />
-               </div>
-               <div className="relative z-10 flex flex-col h-full">
-                  <div className="flex items-center gap-4 mb-8">
-                    <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-400/20 flex items-center justify-center">
-                      <Activity className="w-6 h-6 text-cyan-400" />
-                    </div>
-                    <div>
-                      <h2 className="text-2xl font-black tracking-tight uppercase italic leading-none">Command Terminal</h2>
-                      <p className="text-[9px] font-black text-white/30 uppercase tracking-[0.3em] mt-1">Resource Orchestration</p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex-1 flex flex-col justify-center">
-                    <div className="p-8 bg-white/[0.03] border border-white/5 rounded-[2.5rem] group hover:border-emerald-500/30 transition-all flex flex-col gap-8 relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 blur-[80px] -mr-32 -mt-32" />
-                        
-                        <div className="flex items-center gap-6 relative z-10">
-                          <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
-                             <Bed className="w-8 h-8" />
-                          </div>
-                          <div className="space-y-1">
-                             <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em]">General Beds</span>
-                                <span className="text-[8px] font-black text-emerald-400 uppercase tracking-widest px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">READY</span>
-                             </div>
-                             <div className="flex items-baseline gap-2">
-                                <span className="text-5xl font-black text-white italic tracking-tighter leading-none">{hospital.beds.available}</span>
-                                <span className="text-[9px] font-bold text-white/20 uppercase tracking-widest">/ {hospital.beds.total} Total</span>
-                             </div>
-                          </div>
+                
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <div className="lg:col-span-1 p-5 bg-black/40 border border-white/5 rounded-2xl flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
+                           <Bed className="w-6 h-6" />
                         </div>
-
-                        <div className="flex flex-col gap-4 relative z-10">
-                           <div className="flex items-center bg-black/60 rounded-2xl border border-white/10 p-2 gap-4 justify-between">
-                              <button onClick={() => setBedBookingCount(prev => Math.max(1, prev - 1))} className="w-12 h-12 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors text-white font-black text-xl">-</button>
-                              <div className="flex flex-col items-center">
-                                 <span className="text-[8px] font-black text-white/30 uppercase tracking-widest mb-1">UNITS</span>
-                                 <span className="text-xl font-black italic text-emerald-400">{bedBookingCount}</span>
-                              </div>
-                              <button onClick={() => setBedBookingCount(prev => prev + 1)} className="w-12 h-12 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors text-white font-black text-xl">+</button>
+                        <div className="space-y-0">
+                           <div className="flex items-center gap-1.5">
+                              <span className="text-[8px] font-black text-white/40 uppercase tracking-[0.2em]">Available</span>
+                              <span className="text-[6px] font-black text-emerald-400 uppercase tracking-widest px-1 py-0.2 rounded-full bg-emerald-500/10 border border-emerald-500/20">READY</span>
                            </div>
-                           <button 
-                             onClick={() => { 
-                               if (!requesterName || !requesterPhone) {
-                                 alert("Please fill Commander/Patient details first.");
-                                 return;
-                               }
-                               for(let i=0; i<bedBookingCount; i++) {
-                                 bookResource(hospital.id, 'bed', requesterName, requesterPhone);
-                               }
-                               setBedBookingCount(1); 
-                               setRequesterName("");
-                               setRequesterPhone("");
-                             }}
-                             disabled={hospital.beds.available < bedBookingCount}
-                             className="w-full py-5 rounded-2xl bg-emerald-500 text-white flex items-center justify-center gap-3 hover:bg-emerald-400 active:scale-95 transition-all shadow-xl shadow-emerald-500/20 disabled:opacity-30 disabled:grayscale font-black text-xs uppercase tracking-widest"
-                           >
-                             <Plus className="w-5 h-5" />
-                             <span>Reserve Units</span>
-                           </button>
-                        </div>
-                    </div>
-
-                    <div className="p-8 bg-white/[0.03] border border-white/5 rounded-[2.5rem] flex flex-col gap-8 relative overflow-hidden mt-6 opacity-60">
-                        <div className="absolute top-0 right-0 w-64 h-64 bg-rose-500/5 blur-[80px] -mr-32 -mt-32" />
-                        
-                        <div className="flex items-center gap-6 relative z-10">
-                          <div className="w-16 h-16 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 shrink-0">
-                             <Activity className="w-8 h-8" />
-                          </div>
-                          <div className="space-y-1">
-                             <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em]">ICU Beds (View Only)</span>
-                                <span className={cn(
-                                  "text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border",
-                                  hospital.icuBeds > 0 ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" : "text-rose-400 bg-rose-500/10 border-rose-500/20"
-                                )}>
-                                  {hospital.icuBeds > 0 ? 'AVAILABLE' : 'FULL'}
-                                </span>
-                             </div>
-                             <div className="flex items-baseline gap-2">
-                                <span className="text-5xl font-black text-white italic tracking-tighter leading-none">{hospital.icuBeds}</span>
-                                <span className="text-[9px] font-bold text-white/20 uppercase tracking-widest">/ {hospital.totalIcuBeds} Total</span>
-                             </div>
-                          </div>
-                        </div>
-                        <p className="text-[8px] font-black text-white/20 uppercase tracking-[0.2em] relative z-10">Triage control restricted to hospital administration</p>
-                    </div>
-                  </div>
-               </div>
-            </section>
-
-            <section className="bg-[#090f0f] border border-white/5 rounded-[3rem] p-8 shadow-2xl relative overflow-hidden flex flex-col h-full">
-                <div className="flex items-center gap-4 mb-8 relative z-10">
-                  <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-400/20 flex items-center justify-center">
-                    <Zap className="w-6 h-6 text-cyan-400" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-black tracking-tight uppercase italic leading-none">Deployment Console</h2>
-                    <p className="text-[9px] font-black text-white/30 uppercase tracking-[0.3em] mt-1">Operational Response Protocol</p>
-                  </div>
-                </div>
-
-                <div className="bg-white/[0.03] border border-white/5 rounded-[2.5rem] p-8 space-y-8 relative z-10 flex-1 flex flex-col justify-between">
-                  {['B-GOVT', 'B-BLDE', 'B-ALAMEEN'].includes(hospital.id) ? (
-                    <div className="space-y-6">
-                      <div className="grid grid-cols-1 gap-4">
-                        <div className="space-y-3">
-                          <label className="text-[9px] font-black text-white/30 uppercase tracking-[0.3em] ml-2">Commander Identity</label>
-                          <div className="relative group">
-                             <Users className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20 group-focus-within:text-cyan-400 transition-colors" />
-                             <input 
-                               type="text" 
-                               placeholder="COORDINATOR NAME" 
-                               value={requesterName}
-                               onChange={(e) => setRequesterName(e.target.value)}
-                               className="w-full bg-black/60 border border-white/10 rounded-2xl py-5 pl-12 pr-4 text-[10px] font-black text-white uppercase outline-none focus:border-cyan-500/60 transition-all font-mono"
-                             />
-                          </div>
-                        </div>
-                        <div className="space-y-3">
-                          <label className="text-[9px] font-black text-white/30 uppercase tracking-[0.3em] ml-2">Contact Frequency</label>
-                          <div className="relative group">
-                             <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20 group-focus-within:text-emerald-400 transition-colors" />
-                             <input 
-                               type="tel" 
-                               placeholder="+91 MOBILE" 
-                               value={requesterPhone}
-                               onChange={(e) => setRequesterPhone(e.target.value)}
-                               className="w-full bg-black/60 border border-white/10 rounded-2xl py-5 pl-12 pr-4 text-[10px] font-black text-white uppercase outline-none focus:border-emerald-500/60 transition-all font-mono"
-                             />
-                          </div>
+                           <div className="flex items-baseline gap-1.5">
+                              <span className="text-4xl font-black text-white italic tracking-tighter leading-none">{hospital.beds.available}</span>
+                              <span className="text-[8px] font-bold text-white/20 uppercase tracking-widest">/ {hospital.beds.total}</span>
+                           </div>
                         </div>
                       </div>
-                    </div>
-                  ) : (
-                    <div className="p-8 bg-cyan-500/5 border border-cyan-500/10 rounded-3xl text-center flex-1 flex flex-col items-center justify-center">
-                       <Shield className="w-10 h-10 text-cyan-400/20 mb-4" />
-                       <p className="text-[10px] font-black text-cyan-400 uppercase tracking-[0.3em] leading-relaxed">
-                         Simulation Node Active<br/>
-                         <span className="text-white/20">Authorized for immediate unit deployment without telemetry logging</span>
-                       </p>
-                    </div>
-                  )}
 
-                  <div className="space-y-6 pt-4">
-                    <div className="bg-black/40 border border-white/5 rounded-2xl p-5 flex items-center justify-between">
-                       <div className="flex flex-col">
-                          <span className="text-[8px] font-black text-white/20 uppercase tracking-widest mb-1">Deployment Scale</span>
-                          <span className="text-xs font-black text-white italic">Active Unit Count</span>
-                       </div>
-                       <div className="flex items-center gap-6">
-                          <button onClick={() => setUnitCount(Math.max(1, unitCount - 1))} className="w-10 h-10 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-white">-</button>
-                          <span className="text-lg font-black italic text-cyan-400">{unitCount}</span>
-                          <button onClick={() => setUnitCount(Math.min(hospital.ambulances, unitCount + 1))} className="w-10 h-10 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-white">+</button>
-                       </div>
+                      <div className="relative group/select">
+                        <select 
+                          value={bedBookingCount}
+                          onChange={(e) => setBedBookingCount(parseInt(e.target.value))}
+                          className="bg-black border border-white/10 rounded-xl px-4 py-2 text-lg font-black text-emerald-400 outline-none cursor-pointer appearance-none min-w-[80px] text-center hover:border-emerald-500 transition-all font-mono"
+                        >
+                          {Array.from({ length: 100 }, (_, i) => i + 1).map(n => <option key={n} value={n} className="bg-[#050a0a] text-white">{n}</option>)}
+                        </select>
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none opacity-20">
+                          <ChevronDown className="w-3 h-3 text-emerald-400" />
+                        </div>
+                      </div>
+                  </div>
+
+                  <div className="lg:col-span-2 flex flex-col gap-6">
+                    <div className="grid grid-cols-1 gap-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                      {bedRequesters.map((requester, idx) => (
+                        <div key={idx} className="grid grid-cols-1 md:grid-cols-4 gap-3 p-5 bg-white/[0.03] rounded-2xl border border-white/10 shadow-lg relative group overflow-hidden">
+                          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-20 transition-opacity">
+                            <Bed className="w-16 h-16 text-emerald-400" />
+                          </div>
+                          <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500/40" />
+
+                          <div className="relative group/field md:col-span-1">
+                             <Users className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20 group-focus-within/field:text-emerald-400 transition-colors" />
+                             <input 
+                               type="text" 
+                               placeholder="PATIENT NAME" 
+                               value={requester.name}
+                               onChange={(e) => {
+                                 const next = [...bedRequesters];
+                                 next[idx].name = e.target.value;
+                                 setBedRequesters(next);
+                               }}
+                               className="w-full bg-black/60 border border-white/5 rounded-xl py-3 pl-12 pr-4 text-[11px] font-black text-white uppercase outline-none focus:border-emerald-500/40 transition-all font-mono"
+                             />
+                          </div>
+                          <div className="relative group/field">
+                             <input 
+                               type="number" 
+                               placeholder="AGE" 
+                               value={requester.age}
+                               onChange={(e) => {
+                                 const next = [...bedRequesters];
+                                 next[idx].age = e.target.value;
+                                 setBedRequesters(next);
+                               }}
+                               className="w-full bg-black/60 border border-white/5 rounded-xl py-3 px-4 text-[11px] font-black text-white uppercase outline-none focus:border-emerald-500/40 transition-all font-mono"
+                             />
+                          </div>
+                          <div className="relative group/field">
+                             <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20 group-focus-within/field:text-emerald-400 transition-colors" />
+                             <input 
+                               type="tel" 
+                               placeholder="CONTACT" 
+                               value={requester.phone}
+                               onChange={(e) => {
+                                 const next = [...bedRequesters];
+                                 next[idx].phone = e.target.value;
+                                 setBedRequesters(next);
+                               }}
+                               className="w-full bg-black/60 border border-white/5 rounded-xl py-3 pl-12 pr-4 text-[11px] font-black text-white uppercase outline-none focus:border-emerald-500/40 transition-all font-mono"
+                             />
+                          </div>
+                          <div className="relative group/field">
+                             <Zap className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20 group-focus-within/field:text-rose-400 transition-colors" />
+                             <input 
+                               type="tel" 
+                               placeholder="EMERGENCY" 
+                               value={requester.emergency}
+                               onChange={(e) => {
+                                 const next = [...bedRequesters];
+                                 next[idx].emergency = e.target.value;
+                                 setBedRequesters(next);
+                               }}
+                               className="w-full bg-black/60 border border-white/5 rounded-xl py-3 pl-12 pr-4 text-[11px] font-black text-white uppercase outline-none focus:border-rose-500/40 transition-all font-mono border-rose-500/10"
+                             />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                     
+                    <button 
+                       onClick={async () => { 
+                         if (bedRequesters.some(r => !r.name || !r.phone || !r.emergency || !r.age)) {
+                           alert("CRITICAL ERROR: ALL PATIENT DETAILS ARE MANDATORY.");
+                           return;
+                         }
+
+                         const isDB = ['B-GOVT', 'B-BLDE', 'B-ALAMEEN'].includes(hospital.id);
+                         
+                         for (const r of bedRequesters) {
+                           requestAdmission(hospital.id, r.name, r.age, r.phone, r.emergency);
+                           if (isDB) await new Promise(res => setTimeout(res, 300));
+                         }
+
+                         setBedBookingCount(1); 
+                         setBedRequesters([{ name: "", phone: "", age: "25", emergency: "" }]);
+                       }}
+                       disabled={hospital.beds.available < bedBookingCount}
+                       className="w-full py-5 rounded-2xl bg-emerald-500 text-white flex items-center justify-center gap-2 hover:bg-emerald-400 active:scale-95 transition-all shadow-2xl shadow-emerald-500/40 disabled:opacity-30 disabled:grayscale font-black text-[12px] uppercase tracking-[0.4em]"
+                     >
+                       <span>Authorize {bedBookingCount} Reserve Units</span>
+                     </button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* Deployment Console (Ambulance) */}
+            <section className="bg-[#091414] border border-cyan-500/20 rounded-3xl p-6 shadow-2xl relative overflow-hidden flex flex-col">
+              <div className="flex items-center gap-4 mb-6 relative z-10">
+                <div className="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-400/20 flex items-center justify-center text-cyan-400">
+                  <Zap className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-black tracking-tight leading-none">Deployment Console</h2>
+                  <p className="text-[9px] font-black text-white/30 uppercase tracking-[0.4em] mt-1">Response Management</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 relative z-10">
+                <div className="lg:col-span-1 p-5 bg-black/40 border border-white/5 rounded-2xl flex items-center justify-between gap-4">
+                   <div className="flex flex-col">
+                      <span className="text-[8px] font-black text-white/20 uppercase tracking-widest mb-0.5">Fleet Status</span>
+                      <div className="flex items-baseline gap-1.5">
+                         <span className="text-4xl font-black text-cyan-400 italic tracking-tighter leading-none">{hospital.ambulances}</span>
+                         <span className="text-[8px] font-bold text-white/20 uppercase tracking-widest">/ {hospital.totalAmbulances}</span>
+                      </div>
+                   </div>
+                   <div className="relative group/select">
+                      <select 
+                        value={unitCount}
+                        onChange={(e) => setUnitCount(parseInt(e.target.value))}
+                        className="bg-black border border-white/10 rounded-xl px-4 py-2 text-lg font-black text-cyan-400 outline-none cursor-pointer appearance-none min-w-[80px] text-center hover:border-cyan-500 transition-all font-mono"
+                      >
+                        {Array.from({ length: 100 }, (_, i) => i + 1).map(n => <option key={n} value={n} className="bg-[#050a0a] text-white">{n}</option>)}
+                      </select>
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none opacity-20">
+                        <ChevronDown className="w-3 h-3 text-cyan-400" />
+                      </div>
+                   </div>
+                </div>
+
+                  <div className="lg:col-span-2 flex flex-col gap-6">
+                    <div className="grid grid-cols-1 gap-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                      {ambRequesters.map((requester, idx) => (
+                        <div key={idx} className="grid grid-cols-1 md:grid-cols-2 gap-4 p-5 bg-white/[0.03] rounded-2xl border border-white/10 shadow-lg relative group overflow-hidden">
+                          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-20 transition-opacity">
+                            <Zap className="w-16 h-16 text-cyan-400" />
+                          </div>
+                          <div className="absolute top-0 left-0 w-1 h-full bg-cyan-500/40" />
+                          
+                          <div className="relative group/field md:col-span-2">
+                             <Users className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20 group-focus-within/field:text-cyan-400 transition-colors" />
+                             <input 
+                               type="text" 
+                               placeholder="PATIENT NAME / COMMANDER NAME" 
+                               value={requester.name}
+                               onChange={(e) => {
+                                 const next = [...ambRequesters];
+                                 next[idx].name = e.target.value;
+                                 setAmbRequesters(next);
+                               }}
+                               className="w-full bg-black/60 border border-white/5 rounded-xl py-4 pl-12 pr-4 text-[11px] font-black text-white uppercase outline-none focus:border-cyan-500/40 transition-all font-mono"
+                             />
+                          </div>
+                          <div className="relative group/field">
+                             <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20 group-focus-within/field:text-cyan-400 transition-colors" />
+                             <input 
+                               type="tel" 
+                               placeholder="STRIKE CONTACT" 
+                               value={requester.phone}
+                               onChange={(e) => {
+                                 const next = [...ambRequesters];
+                                 next[idx].phone = e.target.value;
+                                 setAmbRequesters(next);
+                               }}
+                               className="w-full bg-black/60 border border-white/5 rounded-xl py-4 pl-12 pr-4 text-[11px] font-black text-white uppercase outline-none focus:border-cyan-500/40 transition-all font-mono"
+                             />
+                          </div>
+                          <div className="relative group/field">
+                             <Navigation className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20 group-focus-within/field:text-cyan-400 transition-colors" />
+                             <input 
+                               type="text" 
+                               placeholder="SPECIFIC PICKUP POINT" 
+                               value={requester.emergency}
+                               onChange={(e) => {
+                                 const next = [...ambRequesters];
+                                 next[idx].emergency = e.target.value;
+                                 setAmbRequesters(next);
+                               }}
+                               className="w-full bg-black/60 border border-white/5 rounded-xl py-4 pl-12 pr-4 text-[11px] font-black text-white uppercase outline-none focus:border-cyan-500/40 transition-all font-mono"
+                             />
+                          </div>
+                        </div>
+                      ))}
                     </div>
 
                     <button 
                       onClick={async () => {
                         if (!userLocation) return;
-                        await dispatchAmbulance(hospital.id, userLocation, requesterName || "Emergency Caller", requesterPhone || "Not Provided", unitCount);
+                        if (ambRequesters.some(r => !r.name)) {
+                          alert("CRITICAL ERROR: ALL REQUESTER NAMES ARE MANDATORY.");
+                          return;
+                        }
+
+                        const isDB = ['B-GOVT', 'B-BLDE', 'B-ALAMEEN'].includes(hospital.id);
+
+                        for (const r of ambRequesters) {
+                          // Use individual pickup point if provided, else fallback to destination string (which is user location)
+                          await dispatchAmbulance(hospital.id, userLocation, r.name, r.phone || "Direct Line", 1, r.emergency || ambDestination);
+                          if (isDB) await new Promise(res => setTimeout(res, 300));
+                        }
+
+                        setAmbRequesters([{ name: "", phone: "", emergency: "" }]);
+                        setUnitCount(1);
                         setActiveDispatch(true);
-                        setTimeout(() => { setActiveDispatch(false); navigate('/map'); }, 1000);
+                        setTimeout(() => { setActiveDispatch(false); }, 1000);
                       }}
                       disabled={!userLocation || hospital.ambulances < unitCount}
-                      className={cn("w-full py-6 rounded-2xl font-black text-xs uppercase tracking-[0.3em] flex items-center justify-center gap-4 transition-all shadow-xl active:scale-95 overflow-hidden relative", activeDispatch ? "bg-emerald-500 text-white" : "bg-cyan-500 hover:bg-cyan-400 text-white shadow-cyan-500/20")}
+                      className={cn(
+                        "w-full py-4 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-2 transition-all shadow-xl active:scale-[0.98] relative", 
+                        activeDispatch ? "bg-emerald-500 text-white shadow-emerald-500/40" : "bg-cyan-600 hover:bg-cyan-500 text-white shadow-cyan-600/40"
+                      )}
                     >
-                       <Play className={cn("w-5 h-5", activeDispatch ? "hidden" : "block")} />
-                       <ShieldCheck className={cn("w-6 h-6", activeDispatch ? "block" : "hidden")} />
-                       {activeDispatch ? "Dispatched" : "Engage Protocol"}
+                       {activeDispatch ? "UNITS DEPLOYED" : `DEPLOY ${unitCount} UNITS`}
                     </button>
                   </div>
-                </div>
-              </section>
-            </div>
-          )}
-        </div>
+              </div>
+            </section>
+          </div>
+        )}
 
-        {/* Right Column */}
-        <div className="space-y-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 pt-12 border-t border-white/5">
+          <div className="lg:col-span-2 space-y-12">
+            {/* Synopsis */}
+            <section className="space-y-6">
+              <div className="flex items-center gap-3">
+                <Info className="w-6 h-6 text-cyan-400" />
+                <h2 className="text-2xl font-black tracking-tight uppercase">Synopsis</h2>
+              </div>
+              <div className="bg-white/5 border border-white/10 rounded-3xl p-8">
+                <p className="text-white/60 leading-relaxed text-lg font-medium">
+                  {hospital.name} stands as a beacon of medical excellence in the heart of the city. As a premier {hospital.type.toLowerCase()}, it offers a comprehensive range of healthcare services, from advanced emergency trauma care to specialized surgical procedures.
+                  <br /><br />
+                  Equipped with the latest diagnostic technologies and staffed by world-class medical professionals, the facility is designed to provide patient-centric care in a modern, healing environment.
+                </p>
+              </div>
+            </section>
+
+            {/* Departments moved below Synopsis */}
+            <section className="bg-white/5 border border-white/10 rounded-3xl p-8 space-y-6">
+              <h3 className="text-xl font-black uppercase tracking-tight">Departments</h3>
+              <div className="flex flex-wrap gap-2">
+                {['Cardiology', 'Neurology', 'Oncology', 'Pediatrics', 'Orthopedics'].map(dept => (
+                  <span key={dept} className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 text-[10px] font-black uppercase tracking-widest text-white/60">{dept}</span>
+                ))}
+              </div>
+            </section>
+
+            {/* Travel Intel for non-hospitals */}
+            {hospital.type !== 'Hospital' && hospital.type !== 'Medical Center' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <section className="bg-[#090f0f] border border-white/5 rounded-[3rem] p-8 shadow-2xl relative overflow-hidden">
+                  <div className="flex items-center gap-4 mb-6 relative z-10">
+                    <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-400/20 flex items-center justify-center">
+                      <MapPin className="w-6 h-6 text-cyan-400" />
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-black tracking-tight uppercase italic leading-none">Distance Intel</h2>
+                      <p className="text-[9px] font-black text-white/30 uppercase tracking-[0.3em] mt-1">Geospatial Awareness</p>
+                    </div>
+                  </div>
+                  <div className="bg-white/[0.03] border border-white/5 rounded-[2.5rem] p-8">
+                    <p className="text-4xl font-black text-white italic leading-none">{hospital.distance ? hospital.distance.toFixed(1) : '?'}<span className="text-xs uppercase ml-2 text-white/20">KM</span></p>
+                    <p className="text-[9px] font-black text-cyan-400/40 uppercase tracking-[0.3em] mt-3 italic leading-none">Direct Sector Proximity</p>
+                  </div>
+                </section>
+
+                <section className="bg-[#090f0f] border border-white/5 rounded-[3rem] p-8 shadow-2xl relative overflow-hidden">
+                  <div className="flex items-center gap-4 mb-6 relative z-10">
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-400/20 flex items-center justify-center">
+                      < Zap className="w-6 h-6 text-emerald-400" />
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-black tracking-tight uppercase italic leading-none">Est. Time</h2>
+                      <p className="text-[9px] font-black text-white/30 uppercase tracking-[0.3em] mt-1">Arrival Velocity</p>
+                    </div>
+                  </div>
+                  <div className="bg-white/[0.03] border border-white/5 rounded-[2.5rem] p-8">
+                    <p className="text-4xl font-black text-white italic leading-none">{hospital.distance ? Math.round(hospital.distance * 2.5) : '?'}<span className="text-xs uppercase ml-2 text-white/20">MIN</span></p>
+                    <p className="text-[9px] font-black text-emerald-400/40 uppercase tracking-[0.3em] mt-3 italic leading-none">Optimal Traffic Conditions</p>
+                  </div>
+                </section>
+              </div>
+            )}
+          </div>
+
+          {/* Right Column (Secondary intel) */}
+          <div className="space-y-8">
           <section className="bg-white/5 border border-white/10 rounded-3xl p-8 space-y-6">
             <h3 className="text-xl font-black uppercase tracking-tight">Statistics</h3>
             <div className="space-y-4">
@@ -608,17 +735,9 @@ export const HospitalDetail = () => {
               </div>
             </div>
           </section>
-
-          <section className="bg-white/5 border border-white/10 rounded-3xl p-8 space-y-6">
-            <h3 className="text-xl font-black uppercase tracking-tight">Departments</h3>
-            <div className="flex flex-wrap gap-2">
-              {['Cardiology', 'Neurology', 'Oncology', 'Pediatrics', 'Orthopedics'].map(dept => (
-                <span key={dept} className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 text-[10px] font-black uppercase tracking-widest text-white/60">{dept}</span>
-              ))}
-            </div>
-          </section>
         </div>
       </div>
     </div>
-  );
+  </div>
+);
 };

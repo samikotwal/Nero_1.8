@@ -81,7 +81,7 @@ const StatCard = ({ title, value, subValue, icon, color, iconBg, isActive }: { t
 };
 
 export const Dashboard = () => {
-  const { hospitals, emergencies } = useSimulation();
+  const { hospitals, emergencies, overviewStats, responders } = useSimulation();
 
   const hourlyData = useMemo(() => Array.from({ length: 24 }, (_, i) => ({
     hour: `${String(i).padStart(2, "0")}:00`,
@@ -138,7 +138,7 @@ export const Dashboard = () => {
           isActive={true}
         />
         <StatCard 
-          title="ICU Beds Available" 
+          title="BEDS" 
           value={hospitals.reduce((acc, h) => acc + h.icuBeds, 0)} 
           subValue="Monitored live"
           icon={<Bed className="w-6 h-6 text-emerald-400" />} 
@@ -146,24 +146,24 @@ export const Dashboard = () => {
           color="emerald"
         />
         <StatCard 
-          title="Emergency Readiness" 
-          value="95%" 
-          subValue="Optimal Coverage"
-          icon={<ShieldCheck className="w-6 h-6 text-cyan-400" />} 
+          title="AMBULANCE" 
+          value={responders.length} 
+          subValue="Active Dispatches"
+          icon={<AlertTriangle className="w-6 h-6 text-cyan-400" />} 
           iconBg="bg-cyan-500/10"
           color="cyan"
         />
         <StatCard 
-          title="Active Emergencies" 
-          value={emergencies.filter(e => e.status === 'ASSIGNED').length} 
-          subValue="Auto-assigned"
-          icon={<AlertTriangle className="w-6 h-6 text-emerald-400" />} 
+          title="REQUESTS" 
+          value={emergencies.filter(e => e.status !== 'COMPLETED').length} 
+          subValue="High Priority"
+          icon={<Wind className="w-6 h-6 text-emerald-400" />} 
           iconBg="bg-emerald-500/10"
           color="emerald"
         />
         <StatCard 
           title="Completed Today" 
-          value={emergencies.filter(e => e.status === 'COMPLETED').length} 
+          value={overviewStats.completedToday} 
           subValue="+12% vs avg"
           icon={<Activity className="w-6 h-6 text-cyan-400" />} 
           iconBg="bg-cyan-500/10"

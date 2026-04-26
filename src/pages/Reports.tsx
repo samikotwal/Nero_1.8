@@ -23,9 +23,6 @@ import {
 } from 'recharts';
 import { useSimulation } from '../context/SimulationContext';
 import { cn } from '../lib/utils';
-import { fetchRecentBookings } from '../services/hospitalDatabaseService';
-import { Loader2 } from 'lucide-react';
-
 const weeklyData = [
   { day: 'Tue', time: 8.2 },
   { day: 'Wed', time: 8.8 },
@@ -75,20 +72,8 @@ const springTransition: any = {
   mass: 0.8
 };
 
+
 export const Reports = () => {
-  const [bookings, setBookings] = React.useState<any[]>([]);
-  const [isBookingsLoading, setIsBookingsLoading] = React.useState(true);
-
-  React.useEffect(() => {
-    const loadBookings = async () => {
-      setIsBookingsLoading(true);
-      const data = await fetchRecentBookings();
-      setBookings(data);
-      setIsBookingsLoading(false);
-    };
-    loadBookings();
-  }, []);
-
   return (
     <div className="space-y-6 pb-12">
       {/* Weekly Response Time Trend */}
@@ -267,111 +252,9 @@ export const Reports = () => {
         </motion.div>
       </div>
       
-      {/* Recent Bookings Table */}
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...springTransition, delay: 0.5 }}
-        className="bg-white/[0.02] backdrop-blur-xl border border-white/10 rounded-2xl p-8 relative group overflow-hidden"
-      >
-        <div className="flex justify-between items-center mb-8">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-400/20 flex items-center justify-center">
-              <Calendar className="w-5 h-5 text-cyan-400" />
-            </div>
-            <div>
-              <h3 className="text-lg font-black tracking-tight text-white uppercase italic leading-none">Booking History</h3>
-              <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em] mt-1">Live patient records from Supabase</p>
-            </div>
-          </div>
-          <button 
-            onClick={async () => {
-              setIsBookingsLoading(true);
-              const data = await fetchRecentBookings();
-              setBookings(data);
-              setIsBookingsLoading(false);
-            }}
-            className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest border border-white/5"
-          >
-            Refresh Feed
-          </button>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-separate border-spacing-y-2">
-            <thead>
-              <tr className="text-[10px] font-black text-white/20 uppercase tracking-[0.2em]">
-                <th className="px-6 py-4">Patient Details</th>
-                <th className="px-6 py-4">Facility</th>
-                <th className="px-6 py-4">Resource</th>
-                <th className="px-6 py-4 text-right">Timestamp</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isBookingsLoading ? (
-                <tr>
-                  <td colSpan={4} className="py-20 text-center">
-                    <div className="flex flex-col items-center gap-4">
-                      <Loader2 className="w-8 h-8 text-cyan-500 animate-spin" />
-                      <span className="text-[10px] font-black text-white/30 uppercase tracking-widest">Accessing Secure Records...</span>
-                    </div>
-                  </td>
-                </tr>
-              ) : bookings.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="py-20 text-center text-white/10 italic text-sm font-black uppercase tracking-widest">
-                    No bookings recorded in the system yet.
-                  </td>
-                </tr>
-              ) : (
-                bookings.map((booking, idx) => (
-                  <motion.tr 
-                    key={booking.id}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: idx * 0.05 }}
-                    className="bg-white/5 hover:bg-white/[0.08] transition-colors rounded-xl overflow-hidden group"
-                  >
-                    <td className="px-6 py-4 rounded-l-xl">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-xl">👤</div>
-                        <div className="flex flex-col">
-                          <span className="text-sm font-black text-white italic tracking-tight">{booking.patient_name}</span>
-                          <span className="text-[9px] font-black text-white/40 tracking-widest mt-0.5">{booking.contact_number}</span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-black text-cyan-400/80 uppercase">{booking.hospital_name}</span>
-                        <span className="text-[8px] font-bold text-white/20 uppercase tracking-widest">ID: {booking.hospital_id}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className={cn(
-                        "inline-flex px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border",
-                        booking.resource_type === 'BED' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-rose-500/10 text-rose-400 border-rose-500/20"
-                      )}>
-                        {booking.resource_type}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-right rounded-r-xl">
-                      <span className="text-[10px] font-mono text-white/30">
-                        {new Date(booking.timestamp).toLocaleString([], { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })}
-                      </span>
-                    </td>
-                  </motion.tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </motion.div>
-
-      {/* Bottom Stats Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         {[
-          { label: 'Total Emergencies', value: '0', sub: 'This session' },
+          { label: 'Total Operations', value: '842', sub: 'Protocol Activations' },
           { label: 'Avg Response Time', value: '8.5 min', sub: 'Target: <8 min' },
           { label: 'Resolution Rate', value: '94.2%', sub: '+2.1% vs last week' },
           { label: 'Patient Satisfaction', value: '4.7/5', sub: 'Based on feedback' },
@@ -380,7 +263,7 @@ export const Reports = () => {
             key={stat.label}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ ...springTransition, delay: 0.4 + i * 0.1 }}
+            transition={{ ...springTransition, delay: 0.1 + i * 0.1 }}
             className="bg-white/[0.02] backdrop-blur-xl border border-white/10 rounded-2xl p-8 text-center hover:border-cyan-500/30 transition-colors"
           >
             <h4 className="text-3xl font-black mb-2 text-white">{stat.value}</h4>
