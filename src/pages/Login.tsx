@@ -102,7 +102,22 @@ export const Login = () => {
           email,
           password,
         });
-        if (error) throw error;
+        
+        if (error) {
+          if (error.message.includes('already registered')) {
+            // If already registered but not confirmed, we can still try to trigger OTP flow
+            setShowOtp(true);
+            setShowResend(true);
+            setMessage('Account already in system. Please verify your identity with the code sent to your email.');
+            
+            // Try auto-resend for better UX
+            if (cooldown === 0) {
+              await supabase.auth.resend({ type: 'signup', email });
+            }
+            return;
+          }
+          throw error;
+        }
         
         if (data.user && data.session) {
           setMessage('Account created! Redirecting...');
@@ -110,6 +125,7 @@ export const Login = () => {
           setMessage('Account initiated. Please enter the 8-digit code dispatched to your email.');
           setShowOtp(true);
           setShowResend(true);
+          startCooldown();
         }
       } else {
         const { error } = await supabase.auth.signInWithPassword({

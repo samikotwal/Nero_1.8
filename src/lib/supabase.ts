@@ -1,16 +1,32 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL;
-const supabaseAnonKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL || 'https://xjxnpcxlwitvknqybsej.supabase.co';
+const supabaseAnonKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhqeG5wY3hsd2l0dmtucXliHNlaiIsImlhdCI6MTY3OTc1NjQwMywiZXhwIjoyMDY5MzgwMDAzfQ.dummy_key';
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('Supabase credentials missing. App will fallback to simulated data.');
+if (!(import.meta as any).env.VITE_SUPABASE_URL || !(import.meta as any).env.VITE_SUPABASE_ANON_KEY) {
+  console.warn('Supabase credentials missing. App will fallback to simulated data and dummy key.');
 }
 
-export const supabase = createClient(
-  supabaseUrl || 'https://xjxnpcxlwitvknqybsej.supabase.co',
-  supabaseAnonKey || 'sb_publishable_DVN5jkAWscngvexK_3MGoA_RiRZHeUByQW-XGqV91_E'
-);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// Test connection and log status
+async function testSupabaseConnection() {
+  try {
+    const { error } = await supabase.from('hospitals').select('id').limit(1);
+    if (error) {
+      if (error.message.includes('Failed to fetch')) {
+        console.error('Supabase Connection Error: NETWORK_ERROR. This usually means the browser cannot reach the Supabase URL. Check your connection or VPN.');
+      } else {
+        console.warn('Supabase Connection Warning:', error.message);
+      }
+    } else {
+      console.log('Supabase Connection: ACTIVE');
+    }
+  } catch (err) {
+    console.error('Supabase Connection Critical Error:', err);
+  }
+}
+testSupabaseConnection();
 
 export async function fetchHospitalUpdates() {
   const { data, error } = await supabase
